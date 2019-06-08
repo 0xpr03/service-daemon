@@ -1,0 +1,27 @@
+[database]
+url = "root@localhost/test"
+password = "12345"
+
+[[services]]
+# ID is required to allow services to run accross reloads
+id = 0
+enabled = true
+name = "mc-server"
+autostart = true
+command = "java"
+directory = "/home/aron/Temp/test_through/DDSS+Serverfiles+V.+5.1/"
+args = ["-jar","forge-1.12.2-14.23.5.2836-universal.jar","nogui"]
+# send to process for soft-stop
+soft_stop = "stop"
+# restart on crash
+restart = false
+
+[[services]]
+id = 1
+enabled = false
+name = "cat utf8-lossy demo"
+autostart = true
+command = "/bin/cat"
+directory = "/home"
+args = ["/home/aron/Documents/Docs/notizen/temp1.txt"]
+restart = false

@@ -1,0 +1,29 @@
+[package]
+name = "service-daemon"
+version = "0.1.0"
+authors = ["Aron Heinecke <aron.heinecke@t-online.de>"]
+edition = "2018"
+description = "Server-Software controller for remote controlling status of daemons"
+license = "MPL-2.0"
+
+[dependencies]
+actix = "0.8"
+actix-web = "1"
+actix-session = "0.1"
+config = "0.9"
+oath = "0.10"
+mysql = "16"
+tokio-io = "0.1"
+tokio-signal = "0.2"
+failure = "0.1"
+serde = {features = ["derive"], version = "1" }
+log = "0.4"
+env_logger = "0.6"
+metrohash = "1"
+tokio-process = "0.2"
+arraydeque = "0.4"
+futures = "0.1"
+
+[dev-dependencies]
+toml = "0.5"
+circular-queue = "0.2.0"
