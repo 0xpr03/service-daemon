@@ -7,13 +7,14 @@ use actix;
 use actix::prelude::*;
 use actix::System;
 use failure::Fallible;
-use service::ServiceController;
+use crate::handler::service::ServiceController;
+use crate::handler::messages;
 use tokio_signal::unix::{Signal, SIGINT, SIGTERM};
 
-mod messages;
 mod readline;
-mod service;
+mod handler;
 mod settings;
+mod db;
 mod web;
 fn main() -> Fallible<()> {
     env_logger::init();
@@ -21,20 +22,20 @@ fn main() -> Fallible<()> {
     trace!("{:#?}", settings);
 
     System::run(|| {
-        let sigint = Signal::new(SIGINT).flatten_stream();
-        let sigterm = Signal::new(SIGTERM).flatten_stream();
+        // let sigint = Signal::new(SIGINT).flatten_stream();
+        // let sigterm = Signal::new(SIGTERM).flatten_stream();
 
-        // Use the `select` combinator to merge these two streams into one
-        let stream = sigint.select(sigterm);
-        let fut = stream
-            .for_each(|signal| {
-                println!("Received signal {}", signal);
-                Ok(())
-            })
-            .map_err(|_| ());
-        actix::spawn(fut);
+        // // Use the `select` combinator to merge these two streams into one
+        // let stream = sigint.select(sigterm);
+        // let fut = stream
+        //     .for_each(|signal| {
+        //         println!("Received signal {}", signal);
+        //         Ok(())
+        //     })
+        //     .map_err(|_| ());
+        // actix::spawn(fut);
         let startup = ServiceController::from_registry()
-            .send(crate::messages::LoadServices {
+            .send(messages::LoadServices {
                 data: settings.services,
             })
             .map_err(|_| ());

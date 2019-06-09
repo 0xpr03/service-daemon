@@ -6,13 +6,17 @@ edition = "2018"
 description = "Server-Software controller for remote controlling status of daemons"
 license = "MPL-2.0"
 
+[features]
+default = ["sled"]
+
 [dependencies]
 actix = "0.8"
 actix-web = "1"
 actix-session = "0.1"
 config = "0.9"
 oath = "0.10"
-mysql = "16"
+mysql = {version = "16", optional = true }
+sled = {version = "0.24", optional = true }
 tokio-io = "0.1"
 tokio-signal = "0.2"
 failure = "0.1"
@@ -24,6 +28,9 @@ tokio-process = "0.2"
 arraydeque = "0.4"
 futures = "0.1"
 
+
+
 [dev-dependencies]
 toml = "0.5"
 circular-queue = "0.2.0"
+

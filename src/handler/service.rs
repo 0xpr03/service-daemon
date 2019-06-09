@@ -120,6 +120,20 @@ impl Handler<GetOutput> for ServiceController {
     }
 }
 
+impl Handler<GetServices> for ServiceController {
+    type Result = Result<Vec<ServiceMin>,ControllerError>;
+
+    fn handle(&mut self, msg: GetServices, ctx: &mut Context<Self>) -> Self::Result {
+        Ok(self.services.values().map(|v|{
+            ServiceMin {
+                id: v.model.id,
+                name: v.model.name.clone(),
+                running: v.running.load(Ordering::Relaxed)
+            }
+        }).collect())
+    }
+}
+
 impl Handler<LoadServices> for ServiceController {
     type Result = ();
     fn handle(&mut self, msg: LoadServices, ctx: &mut Context<Self>) {

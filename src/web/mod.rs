@@ -1,7 +1,11 @@
 pub mod api;
+
+pub mod models;
 pub mod websocket;
+
 use crate::messages;
-use crate::service::ServiceController;
+use crate::handler::service::ServiceController;
+
 use actix::prelude::*;
 use actix_session::{CookieSession, Session};
 use actix_web::dev::Server;
@@ -25,12 +29,18 @@ pub fn start() -> std::io::Result<Server> {
         App::new()
             .wrap(
                 CookieSession::signed(&[0; 32]) // <- create cookie based session middleware
-                    .secure(false),
+                    .secure(false)
+                    .http_only(false),
             )
-            .service(web::resource("/").to_async(index))
+            .data(web::JsonConfig::default().limit(4096))
+            .service(
+                web::resource("/api/service/{service}/output")
+                    .route(web::get().to_async(api::output)),
+            )
+            .service(web::resource("/api/service").route(web::get().to_async(api::services)))
     })
     // let ServiceController handle signals
-    .disable_signals()
+    // .disable_signals()
     .bind("127.0.0.1:59880")?
     .start())
 }

@@ -1,5 +1,5 @@
 //! Adopted from tokio-io io::lines.rs and read_until.rs
-//! Allows utf8-lossy conversion
+//! Allows read-line of [u8] for later String::from_utf8_lossy conversion
 
 use std::io;
 use std::mem;
