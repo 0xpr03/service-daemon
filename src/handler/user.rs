@@ -5,9 +5,7 @@ use crate::db::{bcrypt_verify, models::ActiveLogin, DBInterface, DB};
 use crate::web::models::{CreateUserState, LoginState, UID};
 use actix::prelude::*;
 use bcrypt::BcryptError;
-use failure::Fallible;
 use metrohash::MetroHashMap;
-use std::collections::HashSet;
 
 lazy_static! {
     static ref PERM_ROOT: String = String::from("ROOT");
@@ -25,6 +23,7 @@ pub struct UserService {
 
 impl UserService {
     fn has_permission(&self, uid: UID, perm: &String) -> Result<bool, Error> {
+        // &String due to https://github.com/rust-lang/rust/issues/42671
         let perms = DB.get_user_permissions(uid)?;
         if perms.contains(perm) {
             return Ok(true);
@@ -65,7 +64,7 @@ impl Default for UserService {
 impl Handler<LoginUser> for UserService {
     type Result = Result<LoginState, Error>;
 
-    fn handle(&mut self, msg: LoginUser, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: LoginUser, _ctx: &mut Context<Self>) -> Self::Result {
         self.login_incomplete.remove(&msg.session);
         let uid = match DB.get_id_by_name(&msg.name)? {
             Some(v) => v,
@@ -96,7 +95,7 @@ impl Handler<LoginUser> for UserService {
 impl Handler<LogoutUser> for UserService {
     type Result = Result<(), Error>;
 
-    fn handle(&mut self, msg: LogoutUser, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: LogoutUser, _ctx: &mut Context<Self>) -> Self::Result {
         DB.set_login(&msg.session, None)?;
 
         warn!("Not handling websocket DC!");
@@ -108,7 +107,7 @@ impl Handler<LogoutUser> for UserService {
 impl Handler<CreateUser> for UserService {
     type Result = Result<CreateUserState, Error>;
 
-    fn handle(&mut self, msg: CreateUser, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: CreateUser, _ctx: &mut Context<Self>) -> Self::Result {
         if !self.has_permission(msg.invoker, &PERM_CREATE_USER)? {
             return Err(Error::InvalidPermissions);
         }
@@ -128,7 +127,7 @@ impl Handler<CreateUser> for UserService {
 impl Handler<EditUser> for UserService {
     type Result = Result<bool, Error>;
 
-    fn handle(&mut self, msg: EditUser, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: EditUser, _ctx: &mut Context<Self>) -> Self::Result {
         if msg.invoker != msg.user_uid {
             let required = match msg.data {
                 EditUserData::Name(_) => self.has_permission(msg.invoker, &PERM_EDIT_NAME)?,

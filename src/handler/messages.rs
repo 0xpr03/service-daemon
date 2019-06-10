@@ -24,11 +24,11 @@ impl Message for StartService {
     type Result = Result<(), ControllerError>;
 }
 
-pub struct Stop {
+pub struct StopService {
     pub id: usize,
 }
 
-impl Message for Stop {
+impl Message for StopService {
     type Result = Result<(), ControllerError>;
 }
 
@@ -87,7 +87,7 @@ pub struct EditUser {
 }
 
 impl Message for EditUser {
-    type Result = Result<bool,user::Error>;
+    type Result = Result<bool, user::Error>;
 }
 
 #[derive(PartialEq)]

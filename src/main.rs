@@ -48,10 +48,6 @@ fn main() -> Fallible<()> {
     Ok(())
 }
 
-fn load_config() -> Fallible<()> {
-    Ok(())
-}
-
 #[cfg(test)]
 mod test {
     use arraydeque::{ArrayDeque, Wrapping};
