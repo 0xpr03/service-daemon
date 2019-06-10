@@ -6,6 +6,7 @@ use actix::spawn;
 use arraydeque::{ArrayDeque, Wrapping};
 use failure::Fallible;
 use metrohash::MetroHashMap;
+use tokio_io::io::write_all;
 use tokio_process::{Child, CommandExt};
 
 use futures::sync::mpsc::TrySendError;
@@ -330,25 +331,28 @@ impl Instance {
             let service_info = format!("{}-{}", self.model.id, self.model.name);
 
             // handle stdin
-            let mut stdin = child.stdin().take().unwrap();
+            let stdin = child.stdin().take().unwrap();
             let (tx, rx) = futures::sync::mpsc::channel::<String>(16);
             let buffer_c = self.tty.clone();
             let fut_stdin = rx.for_each(move |msg| {
-                let bytes = msg.as_bytes();
-                match stdin.write_all(bytes) {
-                    Err(e) => {
-                        error!("Couldn't write to stdin of {}: {}", service_info, e);
-                        let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
-                        buffer_w.push_back(MessageType::State(
-                            format!("Couldn't write to stdout! \"{}\"", msg).into_bytes(),
-                        ));
+                let bytes = msg.clone().into_bytes();
+                write_all(stdin,bytes).then(|res| {
+                    match res {
+                        Err(e) => {
+                            error!("Couldn't write to stdin of {}: {}", service_info, e);
+                            let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
+                            buffer_w.push_back(MessageType::State(
+                                format!("Couldn't write to stdout! \"{}\"", msg).into_bytes(),
+                            ));
+                        }
+                        Ok(v) => {
+                            let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
+                            buffer_w.push_back(MessageType::Stdin(msg.into_bytes()));
+                        }
                     }
-                    Ok(v) => {
-                        let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
-                        buffer_w.push_back(MessageType::Stdin(msg.into_bytes()));
-                    }
-                }
-                Ok(())
+
+                    Ok(())
+                })
             });
             spawn(fut_stdin);
             self.stdin = Some(tx);

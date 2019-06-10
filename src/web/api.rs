@@ -38,7 +38,9 @@ pub fn input(
                 ControllerError::ServiceRunning => {
                     HttpResponse::Conflict().body("Instance not running!")
                 }
-                ControllerError::BrokenPipe => HttpResponse::InternalServerError().body("Broken pipe!"),
+                ControllerError::BrokenPipe => {
+                    HttpResponse::InternalServerError().body("Broken pipe!")
+                }
                 v => {
                     warn!("Error on stdin for service: {}", v);
                     HttpResponse::InternalServerError().finish()
