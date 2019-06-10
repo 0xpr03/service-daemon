@@ -6,8 +6,9 @@ use actix::spawn;
 use arraydeque::{ArrayDeque, Wrapping};
 use failure::Fallible;
 use metrohash::MetroHashMap;
+use tokio_codec::{Encoder, FramedWrite};
 use tokio_io::io::write_all;
-use tokio_process::{Child, CommandExt};
+use tokio_process::{Child, ChildStdin, CommandExt};
 
 use futures::sync::mpsc::TrySendError;
 use futures::{self, Future, Stream};
@@ -334,26 +335,26 @@ impl Instance {
             let stdin = child.stdin().take().unwrap();
             let (tx, rx) = futures::sync::mpsc::channel::<String>(16);
             let buffer_c = self.tty.clone();
-            let fut_stdin = rx.for_each(move |msg| {
-                let bytes = msg.clone().into_bytes();
-                write_all(stdin,bytes).then(|res| {
-                    match res {
-                        Err(e) => {
-                            error!("Couldn't write to stdin of {}: {}", service_info, e);
-                            let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
-                            buffer_w.push_back(MessageType::State(
-                                format!("Couldn't write to stdout! \"{}\"", msg).into_bytes(),
-                            ));
-                        }
-                        Ok(v) => {
+            let fut_stdin = rx
+                .fold(stdin,move|stdin, msg| {
+                    let bytes = msg.clone().into_bytes();
+                    write_all(stdin, bytes)
+                        .map(|(stdin, res)| {
                             let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
                             buffer_w.push_back(MessageType::Stdin(msg.into_bytes()));
-                        }
-                    }
 
-                    Ok(())
+                            stdin
+                        })
+                        .map_err(|e| {
+                            // error!("Couldn't write to stdin of {}: {}", service_info, e);
+                            // let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
+                            // buffer_w.push_back(MessageType::State(
+                            //     format!("Couldn't write to stdout! \"{}\"", msg).into_bytes(),
+                            // ));
+                            ()
+                        })
                 })
-            });
+                .map(|_| ());
             spawn(fut_stdin);
             self.stdin = Some(tx);
 
