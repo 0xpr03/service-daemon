@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Serialize,Deserialize};
 
 pub type UID = i32;
 
@@ -10,4 +10,18 @@ pub struct ServiceRequest {
 #[derive(Deserialize)]
 pub struct NewUser {
     pub name: String,
+    pub password: String,
+}
+
+#[derive(Serialize)]
+pub struct MinUser {
+    pub name: String,
+    pub id: UID,
+}
+
+#[derive(Serialize)]
+pub enum LoginState {
+    LoggedIn,
+    Failed,
+    TOTP,
 }

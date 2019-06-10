@@ -1,6 +1,7 @@
 use super::service::ControllerError;
 use crate::settings::Service;
 use crate::web::models::*;
+use crate::handler::user;
 use actix::prelude::*;
 use serde::Serialize;
 
@@ -61,10 +62,11 @@ pub struct ServiceMin {
 pub struct LoginUser {
     pub name: String,
     pub password: String,
+    pub identity: String,
 }
 
 impl Message for LoginUser {
-    type Result = Result<LoginUserResponse, ControllerError>;
+    type Result = Result<LoginState, user::Error>;
 }
 
 pub struct LoginUserResponse {

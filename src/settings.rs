@@ -5,6 +5,12 @@ use serde::{Deserialize, Serialize};
 pub struct Settings {
     pub database: Database,
     pub services: Vec<Service>,
+    pub security: Security
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Security {
+    pub password_min_length: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -56,6 +62,9 @@ mod tests {
             database: Database {
                 url: "test url".to_owned(),
                 password: "12345".to_owned(),
+            },
+            security: Security {
+                password_min_length: 10,
             },
             services: vec![
                 Service {

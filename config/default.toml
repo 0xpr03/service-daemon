@@ -2,10 +2,13 @@
 url = "root@localhost/test"
 password = "12345"
 
+[security]
+password_min_length = 10
+
 [[services]]
 # ID is required to allow services to run accross reloads
 id = 0
-enabled = true
+enabled = false
 name = "mc-server"
 autostart = true
 command = "java"

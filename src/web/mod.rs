@@ -3,9 +3,9 @@ pub mod api;
 pub mod models;
 pub mod websocket;
 
-use crate::messages;
-use crate::handler::service::ServiceController;
 
+use crate::handler::service::ServiceController;
+use crate::messages;
 use actix::prelude::*;
 use actix_session::{CookieSession, Session};
 use actix_web::dev::Server;
@@ -24,6 +24,11 @@ fn index() -> impl Future<Item = HttpResponse, Error = Error> {
         })
 }
 
+fn test_u64() -> impl Future<Item = HttpResponse, Error = Error> {
+    use futures::future::result;
+    result(Ok(HttpResponse::Ok().json(u64::max_value())))
+}
+
 pub fn start() -> std::io::Result<Server> {
     Ok(HttpServer::new(move || {
         App::new()
@@ -38,9 +43,10 @@ pub fn start() -> std::io::Result<Server> {
                     .route(web::get().to_async(api::output)),
             )
             .service(web::resource("/api/service").route(web::get().to_async(api::services)))
+            .service(web::resource("/api/test").route(web::get().to_async(test_u64)))
     })
     // let ServiceController handle signals
     // .disable_signals()
-    .bind("127.0.0.1:59880")?
+    .bind("127.0.0.1:9000")?
     .start())
 }
