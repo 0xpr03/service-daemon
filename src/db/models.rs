@@ -1,5 +1,4 @@
-
-pub use crate::web::models::{MinUser,NewUser,UID};
+pub use crate::web::models::{MinUser, NewUser, UID};
 use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize)]
 pub struct FullUser {

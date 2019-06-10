@@ -1,10 +1,10 @@
-use serde::{Serialize,Deserialize};
+use serde::{Deserialize, Serialize};
 
 pub type UID = i32;
 
 #[derive(Deserialize)]
 pub struct ServiceRequest {
-    pub service: usize
+    pub service: usize,
 }
 
 #[derive(Deserialize)]

@@ -1,4 +1,3 @@
-
 #[cfg(feature = "sled")]
 mod local;
 pub mod models;
@@ -8,10 +7,10 @@ mod remote;
 #[cfg(feature = "mysql")]
 use remote::{DBError, DB as InnerDB};
 
-use bcrypt::{DEFAULT_COST, hash, verify, BcryptResult};
 use crate::web::models::*;
-use models::*;
 use actix::prelude::*;
+use bcrypt::{hash, verify, BcryptResult, DEFAULT_COST};
+use models::*;
 
 pub type Result<T> = ::std::result::Result<T, Error>;
 
@@ -21,7 +20,7 @@ pub enum Error {
     InternalError(DBError),
     #[fail(display = "The specified user id {} is invalid!", _0)]
     InvalidUser(UID),
-    #[fail(display = "The specified name {} is invalid!",_0)]
+    #[fail(display = "The specified name {} is invalid!", _0)]
     InvalidName(String),
     #[fail(display = "User name {} exists already!", _0)]
     NameExists(String),
@@ -42,7 +41,10 @@ impl From<DBError> for Error {
 }
 
 fn get_current_time() -> u64 {
-    ::std::time::SystemTime::now().duration_since(::std::time::UNIX_EPOCH).expect("Invalid SystemTime!").as_secs()
+    ::std::time::SystemTime::now()
+        .duration_since(::std::time::UNIX_EPOCH)
+        .expect("Invalid SystemTime!")
+        .as_secs()
 }
 
 pub trait DBInterface {

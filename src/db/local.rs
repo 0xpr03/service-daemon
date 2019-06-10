@@ -1,4 +1,3 @@
-
 use super::models::*;
 use super::{Error, Result};
 use bincode::{deserialize, serialize};
@@ -227,18 +226,19 @@ impl super::DBInterface for DB {
         let v = self.open_tree(tree::PERMISSION)?.get(ser!(id))?;
         Ok(match v {
             Some(v) => deserialize(&v)?,
-            None => Vec::new()
+            None => Vec::new(),
         })
     }
     fn update_user_permission(&self, id: UID, perms: Vec<String>) -> Result<()> {
-        self.open_tree(tree::PERMISSION)?.set(ser!(id),ser!(perms))?;
+        self.open_tree(tree::PERMISSION)?
+            .set(ser!(id), ser!(perms))?;
         Ok(())
     }
 
     fn get_login(&self, login: &str) -> Result<Option<ActiveLogin>> {
         Ok(match self.open_tree(tree::LOGINS)?.get(serr!(login))? {
             Some(v) => Some(deserialize(&v)?),
-            None => None
+            None => None,
         })
     }
     fn set_login(&self, login: &str, state: Option<ActiveLogin>) -> Result<()> {
@@ -247,17 +247,18 @@ impl super::DBInterface for DB {
             None => {
                 tree.del(serr!(login))?;
                 self.open_tree(tree::REL_LOGIN_SEEN)?.del(serr!(login))?;
-            },
+            }
             Some(state) => {
-                tree.set(serr!(login),ser!(state))?;
+                tree.set(serr!(login), ser!(state))?;
                 self.update_login(login)?;
-            },
+            }
         }
         Ok(())
     }
 
     fn update_login(&self, login: &str) -> Result<()> {
-        self.open_tree(tree::REL_LOGIN_SEEN)?.set(serr!(login),ser!(super::get_current_time()))?;
+        self.open_tree(tree::REL_LOGIN_SEEN)?
+            .set(serr!(login), ser!(super::get_current_time()))?;
         Ok(())
     }
 
@@ -290,7 +291,7 @@ impl super::DBInterface for DB {
 
     fn get_id_by_name(&self, name: &str) -> Result<Option<UID>> {
         let data = self.open_tree(tree::REL_NAME_UID)?.get(serr!(name))?;
-        
+
         if let Some(v) = data {
             let id = deserialize(&v)?;
             // claimed, no data currently

@@ -5,18 +5,18 @@ extern crate failure;
 #[macro_use]
 extern crate lazy_static;
 
+use crate::handler::messages;
+use crate::handler::service::ServiceController;
 use actix;
 use actix::prelude::*;
 use actix::System;
 use failure::Fallible;
-use crate::handler::service::ServiceController;
-use crate::handler::messages;
 use tokio_signal::unix::{Signal, SIGINT, SIGTERM};
 
-mod readline;
-mod handler;
-mod settings;
 mod db;
+mod handler;
+mod readline;
+mod settings;
 mod web;
 fn main() -> Fallible<()> {
     env_logger::init();

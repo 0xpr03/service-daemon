@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct Settings {
     pub database: Database,
     pub services: Vec<Service>,
-    pub security: Security
+    pub security: Security,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -3,7 +3,6 @@ pub mod api;
 pub mod models;
 pub mod websocket;
 
-
 use crate::handler::service::ServiceController;
 use crate::messages;
 use actix::prelude::*;

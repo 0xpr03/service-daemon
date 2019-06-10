@@ -1,7 +1,7 @@
 use super::service::ControllerError;
+use crate::handler::user;
 use crate::settings::Service;
 use crate::web::models::*;
-use crate::handler::user;
 use actix::prelude::*;
 use serde::Serialize;
 

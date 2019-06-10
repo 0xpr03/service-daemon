@@ -15,7 +15,6 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLock};
 use tokio_process::{Child, CommandExt};
 
-
 #[derive(Fail, Debug)]
 pub enum ControllerError {
     #[fail(display = "Failed to load services from data, services already loaded!")]
@@ -60,7 +59,6 @@ impl Actor for ServiceController {
 
     fn started(&mut self, ctx: &mut Context<Self>) {
         debug!("ServiceController is alive");
-
     }
 
     fn stopped(&mut self, ctx: &mut Context<Self>) {
@@ -121,16 +119,18 @@ impl Handler<GetOutput> for ServiceController {
 }
 
 impl Handler<GetServices> for ServiceController {
-    type Result = Result<Vec<ServiceMin>,ControllerError>;
+    type Result = Result<Vec<ServiceMin>, ControllerError>;
 
     fn handle(&mut self, msg: GetServices, ctx: &mut Context<Self>) -> Self::Result {
-        Ok(self.services.values().map(|v|{
-            ServiceMin {
+        Ok(self
+            .services
+            .values()
+            .map(|v| ServiceMin {
                 id: v.model.id,
                 name: v.model.name.clone(),
-                running: v.running.load(Ordering::Relaxed)
-            }
-        }).collect())
+                running: v.running.load(Ordering::Relaxed),
+            })
+            .collect())
     }
 }
 
