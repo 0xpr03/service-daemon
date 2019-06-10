@@ -135,6 +135,7 @@ impl Handler<StopService> for ServiceController {
                 return Err(ControllerError::ServiceStopped.into());
             }
             service.state.set_state(State::Stopped);
+            service.stdin = None;
             if let Some(stdin) = service.stdin.as_mut() {
                 if let Some(stop_msg) = service.model.soft_stop.as_ref() {
                     match stdin.try_send(stop_msg.clone()) {
@@ -426,8 +427,16 @@ impl Instance {
             });
 
             // stop-handle
+            let buffer_c = self.tty.clone();
             let (tx, rx) = futures::sync::oneshot::channel::<()>();
-            let child = child.select(rx.map_err(|_| ())).then(|_x| Ok(()));
+            let child = child
+                .select(rx.map_err(|_| ()).map(move |_| {
+                    let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
+                    buffer_w.push_back(MessageType::State(
+                        String::from("Process killed").into_bytes(),
+                    ));
+                }))
+                .then(|_x| Ok(()));
             self.stop_channel = Some(tx);
 
             let name_c = self.model.name.clone();
