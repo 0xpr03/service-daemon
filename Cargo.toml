@@ -33,6 +33,7 @@ tokio-process = "0.2"
 arraydeque = "0.4"
 futures = "0.1"
 lazy_static = "1"
+sysexit = "0.2"
 
 [dev-dependencies]
 toml = "0.5"

@@ -28,8 +28,12 @@ pub enum ControllerError {
     StartupIOError(::std::io::Error),
     #[fail(display = "Service is stopped!")]
     ServiceStopped,
-    #[fail(display = "Unable to execute, missing service handles!")]
+    #[fail(display = "Unable to execute, missing service handles! This is an bug!")]
     NoServiceHandle,
+    #[fail(display = "Service already running!")]
+    ServiceRunning,
+    #[fail(display = "Pipe to process is broken! This is an bug!")]
+    BrokenPipe,
 }
 
 pub struct ServiceController {
@@ -80,6 +84,9 @@ impl Handler<StartService> for ServiceController {
         trace!("Start received: {}", msg.id);
         match self.services.get_mut(&msg.id) {
             Some(instance) => {
+                if instance.running.load(Ordering::SeqCst) {
+                    return Err(ControllerError::ServiceRunning.into());
+                }
                 trace!("starting..");
                 if let Err(e) = instance.run(ctx.address()) {
                     error!("Can't start instance: {}", e);
@@ -93,12 +100,36 @@ impl Handler<StartService> for ServiceController {
     }
 }
 
+impl Handler<SendStdin> for ServiceController {
+    type Result = Result<(), ControllerError>;
+
+    fn handle(&mut self, msg: SendStdin, _ctx: &mut Context<Self>) -> Self::Result {
+        if let Some(service) = self.services.get_mut(&msg.id) {
+            if !service.running.load(Ordering::Relaxed) {
+                return Err(ControllerError::ServiceStopped.into());
+            }
+            if let Some(stdin) = service.stdin.as_mut() {
+                match stdin.try_send(msg.input) {
+                    Ok(()) => return Ok(()),
+                    Err(e) => {
+                        warn!("Unable to send message to {} {}", service.model.name, e);
+                        return Err(ControllerError::BrokenPipe.into());
+                    }
+                }
+            }
+            Err(ControllerError::NoServiceHandle.into())
+        } else {
+            Err(ControllerError::InvalidInstance(msg.id).into())
+        }
+    }
+}
+
 impl Handler<StopService> for ServiceController {
     type Result = Result<(), ControllerError>;
 
     fn handle(&mut self, msg: StopService, _ctx: &mut Context<Self>) -> Self::Result {
         if let Some(service) = self.services.get_mut(&msg.id) {
-            if service.running.load(Ordering::Relaxed) {
+            if !service.running.load(Ordering::Relaxed) {
                 return Err(ControllerError::ServiceStopped.into());
             }
             service.state.set_state(State::Stopped);
@@ -125,7 +156,10 @@ impl Handler<ServiceStateChanged> for ServiceController {
     type Result = ();
     fn handle(&mut self, msg: ServiceStateChanged, ctx: &mut Context<Self>) {
         if let Some(instance) = self.services.get(&msg.id) {
-            if instance.model.restart && !msg.running && instance.state.get_state() == State::Crashed {
+            if instance.model.restart
+                && !msg.running
+                && instance.state.get_state() == State::Crashed
+            {
                 ctx.address().do_send(StartService {
                     id: instance.model.id,
                 });
@@ -324,7 +358,7 @@ impl Instance {
             let reader = io::BufReader::new(stdout);
             let lines = crate::readline::lines(reader);
             let buffer_c = self.tty.clone();
-            let cycle = lines
+            let cycle_stdout = lines
                 .for_each(move |l| {
                     let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
                     buffer_w.push_back(MessageType::Stdout(l));
@@ -340,7 +374,7 @@ impl Instance {
             let reader = io::BufReader::new(stderr);
             let lines = crate::readline::lines(reader);
             let buffer_c = self.tty.clone();
-            let cycle = lines
+            let cycle_stderr = lines
                 .for_each(move |l| {
                     let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
                     buffer_w.push_back(MessageType::Stderr(l));
@@ -357,12 +391,14 @@ impl Instance {
             let child = child.then(move |res| {
                 let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
                 match res {
-                    Ok(v) => {
+                    Ok(state) => {
+                        let code_formated = sysexit::from_status(state.clone());
                         buffer_w.push_back(MessageType::State(
-                            format!("Process ended with signal {}", v).into_bytes(),
+                            format!("Process ended with signal {}({:?})", state, code_formated)
+                                .into_bytes(),
                         ));
                         if state_c.get_state() == State::Running {
-                            if v.success() {
+                            if state.success() {
                                 state_c.set_state(State::Ended);
                             } else {
                                 state_c.set_state(State::Crashed);
@@ -374,6 +410,7 @@ impl Instance {
                         buffer_w.push_back(MessageType::State(
                             format!("Unable to read exit state!").into_bytes(),
                         ));
+                        state_c.set_state(State::Crashed);
                         warn!("Error reading process exit status: {}", e);
                         Err(())
                     }
@@ -388,7 +425,7 @@ impl Instance {
             let name_c = self.model.name.clone();
             let running_c = self.running.clone();
             let id_c = self.model.id.clone();
-            let future = cycle.join(child).then(move |result| {
+            let future = child.join3(cycle_stdout, cycle_stderr).then(move |result| {
                 running_c.store(false, Ordering::Relaxed);
                 addr.do_send(ServiceStateChanged {
                     id: id_c,

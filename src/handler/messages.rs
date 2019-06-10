@@ -46,6 +46,15 @@ impl Message for GetServices {
     type Result = Result<Vec<ServiceMin>, ControllerError>;
 }
 
+pub struct SendStdin {
+    pub id: usize,
+    pub input: String,
+}
+
+impl Message for SendStdin {
+    type Result = Result<(), ControllerError>;
+}
+
 #[derive(Serialize)]
 pub struct ServiceMin {
     pub id: usize,
