@@ -336,22 +336,24 @@ impl Instance {
             let (tx, rx) = futures::sync::mpsc::channel::<String>(16);
             let buffer_c = self.tty.clone();
             let fut_stdin = rx
-                .fold(stdin,move|stdin, msg| {
+                .fold(stdin, move |stdin, msg| {
                     let bytes = msg.clone().into_bytes();
                     let buffer_c2 = buffer_c.clone();
+                    let buffer_c3 = buffer_c.clone();
+                    let service_info = service_info.clone();
                     write_all(stdin, bytes)
-                        .map(move|(stdin, res)| {
+                        .map(move |(stdin, res)| {
                             let mut buffer_w = buffer_c2.write().expect("Can't write buffer!");
-                            buffer_w.push_back(MessageType::Stdin(msg.into_bytes()));
+                            buffer_w.push_back(MessageType::Stdin(res));
 
                             stdin
                         })
-                        .map_err(|e| {
-                            // error!("Couldn't write to stdin of {}: {}", service_info, e);
-                            // let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
-                            // buffer_w.push_back(MessageType::State(
-                            //     format!("Couldn't write to stdout! \"{}\"", msg).into_bytes(),
-                            // ));
+                        .map_err(move |e| {
+                            error!("Couldn't write to stdin of {}: {}", service_info, e);
+                            let mut buffer_w = buffer_c3.write().expect("Can't write buffer!");
+                            buffer_w.push_back(MessageType::State(
+                                format!("Couldn't write to stdout! \"{}\"", msg).into_bytes(),
+                            ));
                             ()
                         })
                 })
