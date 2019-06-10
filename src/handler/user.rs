@@ -2,15 +2,35 @@ use super::messages::*;
 
 use crate::db;
 use crate::db::{bcrypt_verify, models::ActiveLogin, DBInterface, DB};
-use crate::web::models::{LoginState, UID};
+use crate::web::models::{CreateUserState, LoginState, UID};
 use actix::prelude::*;
 use bcrypt::BcryptError;
 use failure::Fallible;
 use metrohash::MetroHashMap;
 use std::collections::HashSet;
+
+lazy_static! {
+    static ref PERM_ROOT: String = String::from("ROOT");
+    static ref PERM_CREATE_USER: String = String::from("CREATE_USERS");
+    static ref PERM_DELETE_USER: String = String::from("DELETE_USERS");
+    static ref PERM_EDIT_TOTP: String = String::from("EDIT_USERS_TOTP");
+    static ref PERM_EDIT_NAME: String = String::from("EDIT_USERS_NAME");
+    static ref PERM_EDIT_PASSWORD: String = String::from("EDIT_USERS_PASSWORD");
+}
+
 /// Service for handling user related things
 pub struct UserService {
     login_incomplete: MetroHashMap<String, UID>,
+}
+
+impl UserService {
+    fn has_permission(&self, uid: UID, perm: &String) -> Result<bool, Error> {
+        let perms = DB.get_user_permissions(uid)?;
+        if perms.contains(perm) {
+            return Ok(true);
+        }
+        Ok(perms.contains(&PERM_ROOT))
+    }
 }
 
 #[derive(Fail, Debug)]
@@ -34,18 +54,6 @@ impl From<db::Error> for Error {
     }
 }
 
-impl UserService {
-    // fn get_user<'a>(&'a mut self, id: UID) -> Fallible<&'a User> {
-    //     if let Some(v) = self.active_users.get(&id){
-    //         return Ok(v);
-    //     }
-    //     let db_user = DB.get_user(id)?;
-    //     let user =
-    //     self.active_users.put(id,user);
-    //     Ok(user)
-    // }
-}
-
 impl Default for UserService {
     fn default() -> Self {
         Self {
@@ -53,15 +61,6 @@ impl Default for UserService {
         }
     }
 }
-
-/// Active user in system
-// pub struct User {
-//     pub id: UID,
-//     pub name: String,
-//     pub password: String,
-//     pub totp_secret: Option<String>,
-//     pub permissions: HashSet<String>,
-// }
 
 impl Handler<LoginUser> for UserService {
     type Result = Result<LoginState, Error>;
@@ -85,7 +84,7 @@ impl Handler<LoginUser> for UserService {
                         id: uid,
                     }),
                 )?;
-                Ok(LoginState::SETUP_TOTP)
+                Ok(LoginState::SetupTOTP)
             }
         } else {
             DB.set_login(&msg.session, None)?;
@@ -103,6 +102,62 @@ impl Handler<LogoutUser> for UserService {
         warn!("Not handling websocket DC!");
         //TODO: kick from websocket
         Ok(())
+    }
+}
+
+impl Handler<CreateUser> for UserService {
+    type Result = Result<CreateUserState, Error>;
+
+    fn handle(&mut self, msg: CreateUser, ctx: &mut Context<Self>) -> Self::Result {
+        if !self.has_permission(msg.invoker, &PERM_CREATE_USER)? {
+            return Err(Error::InvalidPermissions);
+        }
+        let v = DB.create_user(msg.user);
+        match v {
+            Err(e) => {
+                if let db::Error::NameExists(_) = e {
+                    return Ok(CreateUserState::NameClaimed);
+                }
+                Err(e.into())
+            }
+            Ok(user) => Ok(CreateUserState::Success(user.id)),
+        }
+    }
+}
+
+impl Handler<EditUser> for UserService {
+    type Result = Result<bool, Error>;
+
+    fn handle(&mut self, msg: EditUser, ctx: &mut Context<Self>) -> Self::Result {
+        if msg.invoker != msg.user_uid {
+            let required = match msg.data {
+                EditUserData::Name(_) => self.has_permission(msg.invoker, &PERM_EDIT_NAME)?,
+                EditUserData::Password(_) => {
+                    self.has_permission(msg.invoker, &PERM_EDIT_PASSWORD)?
+                }
+                EditUserData::Permission(_) => self.has_permission(msg.invoker, &PERM_ROOT)?,
+                EditUserData::TOTP(_) => self.has_permission(msg.invoker, &PERM_EDIT_TOTP)?,
+            };
+            if !required {
+                return Ok(false);
+            }
+        }
+        if let EditUserData::Permission(perm) = msg.data {
+            if !self.has_permission(msg.invoker, &PERM_ROOT)? {
+                return Ok(false);
+            }
+            DB.update_user_permission(msg.user_uid, perm)?;
+        } else {
+            let mut user = DB.get_user(msg.user_uid)?;
+            match msg.data {
+                EditUserData::Name(name) => user.name = name,
+                EditUserData::Password(pw) => user.password = db::bcrypt_password(&pw)?,
+                EditUserData::TOTP(secret) => user.totp_secret = Some(secret),
+                EditUserData::Permission(_) => unreachable!(),
+            }
+            DB.update_user(user)?;
+        }
+        Ok(true)
     }
 }
 

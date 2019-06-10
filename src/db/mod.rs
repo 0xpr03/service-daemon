@@ -26,7 +26,7 @@ pub enum Error {
     NameExists(String),
 }
 
-fn bcrypt_password(password: &str) -> BcryptResult<String> {
+pub fn bcrypt_password(password: &str) -> BcryptResult<String> {
     hash(password, DEFAULT_COST)
 }
 

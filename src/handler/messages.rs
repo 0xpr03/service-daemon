@@ -5,12 +5,6 @@ use crate::web::models::*;
 use actix::prelude::*;
 use serde::Serialize;
 
-// #[derive(Message)]
-// pub struct Stdout {
-//     pub id: usize,
-//     pub data: String,
-// }
-
 #[derive(Message)]
 pub struct ServiceStateChanged {
     pub id: usize,
@@ -78,18 +72,28 @@ impl Message for LogoutUser {
 }
 
 pub struct CreateUser {
-    pub id: UID,
+    pub invoker: UID,
     pub user: NewUser,
 }
 
 impl Message for CreateUser {
-    type Result = Result<CreateUserResponse, ControllerError>;
+    type Result = Result<CreateUserState, user::Error>;
 }
 
-pub struct CreateUserResponse {
-    pub code: i32,
-    pub msg: String,
-    pub success: bool,
-    pub id: Option<UID>,
-    pub password: Option<String>,
+pub struct EditUser {
+    pub invoker: UID,
+    pub user_uid: UID,
+    pub data: EditUserData,
+}
+
+impl Message for EditUser {
+    type Result = Result<bool,user::Error>;
+}
+
+#[derive(PartialEq)]
+pub enum EditUserData {
+    Name(String),
+    Permission(Vec<String>),
+    Password(String),
+    TOTP(String),
 }

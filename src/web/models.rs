@@ -28,5 +28,11 @@ pub enum LoginState {
     /// totp-login required
     TOTP,
     /// totp-setup required
-    SETUP_TOTP,
+    SetupTOTP,
+}
+
+#[derive(Serialize)]
+pub enum CreateUserState {
+    Success(UID),
+    NameClaimed,
 }
