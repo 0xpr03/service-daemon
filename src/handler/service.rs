@@ -338,9 +338,10 @@ impl Instance {
             let fut_stdin = rx
                 .fold(stdin,move|stdin, msg| {
                     let bytes = msg.clone().into_bytes();
+                    let buffer_c2 = buffer_c.clone();
                     write_all(stdin, bytes)
-                        .map(|(stdin, res)| {
-                            let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
+                        .map(move|(stdin, res)| {
+                            let mut buffer_w = buffer_c2.write().expect("Can't write buffer!");
                             buffer_w.push_back(MessageType::Stdin(msg.into_bytes()));
 
                             stdin
