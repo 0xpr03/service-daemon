@@ -14,8 +14,8 @@ use futures::{self, Future, Stream};
 use std::io;
 use std::io::Write;
 use std::process::{Command, Stdio};
-use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::{Arc, RwLock};
 
 #[derive(Fail, Debug)]
@@ -97,12 +97,11 @@ impl Handler<StopService> for ServiceController {
     type Result = Result<(), ControllerError>;
 
     fn handle(&mut self, msg: StopService, _ctx: &mut Context<Self>) -> Self::Result {
-        if let Some(mut service) = self.services.get_mut(&msg.id) {
+        if let Some(service) = self.services.get_mut(&msg.id) {
             if service.running.load(Ordering::Relaxed) {
                 return Err(ControllerError::ServiceStopped.into());
             }
-            service.state = State::Stopped;
-            // TODO: actually stop it
+            service.state.set_state(State::Stopped);
             if let Some(stdin) = service.stdin.as_mut() {
                 if let Some(stop_msg) = service.model.soft_stop.as_ref() {
                     match stdin.try_send(stop_msg.clone()) {
@@ -126,7 +125,7 @@ impl Handler<ServiceStateChanged> for ServiceController {
     type Result = ();
     fn handle(&mut self, msg: ServiceStateChanged, ctx: &mut Context<Self>) {
         if let Some(instance) = self.services.get(&msg.id) {
-            if instance.model.restart && !msg.running {
+            if instance.model.restart && !msg.running && instance.state.get_state() == State::Crashed {
                 ctx.address().do_send(StartService {
                     id: instance.model.id,
                 });
@@ -208,7 +207,7 @@ struct Instance {
     model: Service,
     running: Arc<AtomicBool>,
     tty: Arc<RwLock<ArrayDeque<[MessageType; 200], Wrapping>>>,
-    state: State,
+    state: StateFlag,
     stop_channel: Option<futures::sync::oneshot::Sender<()>>,
     stdin: Option<futures::sync::mpsc::Sender<String>>,
 }
@@ -222,10 +221,45 @@ pub enum MessageType {
 
 #[derive(PartialEq)]
 pub enum State {
-    Stopped,
-    Crashed,
-    Ended,
-    Running,
+    Stopped = 0,
+    Running = 1,
+    Ended = 2,
+    Crashed = 3,
+}
+
+// derived from https://gist.github.com/polypus74/eabc7bb00873e6b90abe230f9e632989
+#[derive(Clone)]
+pub struct StateFlag {
+    inner: Arc<AtomicUsize>,
+}
+
+impl StateFlag {
+    pub fn new(state: State) -> Self {
+        StateFlag {
+            inner: Arc::new(AtomicUsize::new(state as usize)),
+        }
+    }
+
+    #[inline]
+    pub fn get_state(&self) -> State {
+        self.inner.load(Ordering::SeqCst).into()
+    }
+    pub fn set_state(&self, state: State) {
+        self.inner.store(state as usize, Ordering::SeqCst)
+    }
+}
+
+impl From<usize> for State {
+    fn from(val: usize) -> Self {
+        use self::State::*;
+        match val {
+            0 => Stopped,
+            1 => Running,
+            2 => Ended,
+            3 => Crashed,
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl Instance {
@@ -251,6 +285,7 @@ impl Instance {
             cmd.stderr(Stdio::piped());
             cmd.stdout(Stdio::piped());
             cmd.stdin(Stdio::piped());
+            self.state.set_state(State::Running);
             let mut child = cmd.spawn_async()?;
 
             addr.do_send(ServiceStateChanged {
@@ -318,6 +353,7 @@ impl Instance {
 
             // handle child exit-return
             let buffer_c = self.tty.clone();
+            let state_c = self.state.clone();
             let child = child.then(move |res| {
                 let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
                 match res {
@@ -325,6 +361,13 @@ impl Instance {
                         buffer_w.push_back(MessageType::State(
                             format!("Process ended with signal {}", v).into_bytes(),
                         ));
+                        if state_c.get_state() == State::Running {
+                            if v.success() {
+                                state_c.set_state(State::Ended);
+                            } else {
+                                state_c.set_state(State::Crashed);
+                            }
+                        }
                         Ok(())
                     }
                     Err(e) => {
@@ -371,7 +414,7 @@ impl From<Service> for Instance {
             model: service,
             running: Arc::new(AtomicBool::new(false)),
             tty: Arc::new(RwLock::new(ArrayDeque::new())),
-            state: State::Stopped,
+            state: StateFlag::new(State::Stopped),
             stop_channel: None,
             stdin: None,
         }
