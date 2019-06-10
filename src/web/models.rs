@@ -21,7 +21,12 @@ pub struct MinUser {
 
 #[derive(Serialize)]
 pub enum LoginState {
+    /// Success
     LoggedIn,
+    /// Invalid credentials
     Failed,
+    /// totp-login required
     TOTP,
+    /// totp-setup required
+    SETUP_TOTP,
 }

@@ -62,23 +62,19 @@ pub struct ServiceMin {
 pub struct LoginUser {
     pub name: String,
     pub password: String,
-    pub identity: String,
+    pub session: String,
 }
 
 impl Message for LoginUser {
     type Result = Result<LoginState, user::Error>;
 }
 
-pub struct LoginUserResponse {
-    pub code: i32,
-    pub msg: String,
-    pub success: bool,
-    pub id: UID,
+pub struct LogoutUser {
+    pub session: String,
 }
 
-#[derive(Message)]
-pub struct LogoutUser {
-    pub id: i32,
+impl Message for LogoutUser {
+    type Result = Result<(), user::Error>;
 }
 
 pub struct CreateUser {
