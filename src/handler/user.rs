@@ -13,6 +13,7 @@ lazy_static! {
     static ref PERM_DELETE_USER: String = String::from("DELETE_USERS");
     static ref PERM_EDIT_TOTP: String = String::from("EDIT_USERS_TOTP");
     static ref PERM_EDIT_NAME: String = String::from("EDIT_USERS_NAME");
+    static ref PERM_EDIT_EMAIL: String = String::from("EDIT_USERS_EMAIL");
     static ref PERM_EDIT_PASSWORD: String = String::from("EDIT_USERS_PASSWORD");
 }
 
@@ -66,7 +67,7 @@ impl Handler<LoginUser> for UserService {
 
     fn handle(&mut self, msg: LoginUser, _ctx: &mut Context<Self>) -> Self::Result {
         self.login_incomplete.remove(&msg.session);
-        let uid = match DB.get_id_by_name(&msg.name)? {
+        let uid = match DB.get_id_by_email(&msg.email)? {
             Some(v) => v,
             None => return Ok(LoginState::Failed),
         };
@@ -114,8 +115,8 @@ impl Handler<CreateUser> for UserService {
         let v = DB.create_user(msg.user);
         match v {
             Err(e) => {
-                if let db::Error::NameExists(_) = e {
-                    return Ok(CreateUserState::NameClaimed);
+                if let db::Error::EMailExists(_) = e {
+                    return Ok(CreateUserState::EMailClaimed);
                 }
                 Err(e.into())
             }
@@ -136,6 +137,7 @@ impl Handler<EditUser> for UserService {
                 }
                 EditUserData::Permission(_) => self.has_permission(msg.invoker, &PERM_ROOT)?,
                 EditUserData::TOTP(_) => self.has_permission(msg.invoker, &PERM_EDIT_TOTP)?,
+                EditUserData::Mail(_) => self.has_permission(msg.invoker, &PERM_EDIT_EMAIL)?,
             };
             if !required {
                 return Ok(false);
@@ -150,6 +152,7 @@ impl Handler<EditUser> for UserService {
             let mut user = DB.get_user(msg.user_uid)?;
             match msg.data {
                 EditUserData::Name(name) => user.name = name,
+                EditUserData::Mail(email) => user.email = email,
                 EditUserData::Password(pw) => user.password = db::bcrypt_password(&pw)?,
                 EditUserData::TOTP(secret) => user.totp_secret = Some(secret),
                 EditUserData::Permission(_) => unreachable!(),

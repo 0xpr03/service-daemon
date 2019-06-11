@@ -22,8 +22,8 @@ pub enum Error {
     InvalidUser(UID),
     #[fail(display = "The specified name {} is invalid!", _0)]
     InvalidName(String),
-    #[fail(display = "User name {} exists already!", _0)]
-    NameExists(String),
+    #[fail(display = "User mail {} exists already!", _0)]
+    EMailExists(String),
 }
 
 pub fn bcrypt_password(password: &str) -> BcryptResult<String> {
@@ -51,7 +51,7 @@ pub trait DBInterface {
     fn create_user(&self, user: NewUser) -> Result<FullUser>;
     fn delete_user(&self, id: UID) -> Result<()>;
     fn get_user(&self, id: UID) -> Result<FullUser>;
-    fn get_id_by_name(&self, name: &str) -> Result<Option<UID>>;
+    fn get_id_by_email(&self, email: &str) -> Result<Option<UID>>;
     fn update_user(&self, user: FullUser) -> Result<()>;
     fn get_users(&self) -> Result<Vec<MinUser>>;
     fn get_user_permissions(&self, id: UID) -> Result<Vec<String>>;

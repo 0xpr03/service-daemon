@@ -5,6 +5,7 @@ pub struct FullUser {
     pub name: String,
     pub id: UID,
     pub password: String,
+    pub email: String,
     pub totp_secret: Option<String>,
 }
 

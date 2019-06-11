@@ -175,7 +175,6 @@ impl Handler<GetOutput> for ServiceController {
     type Result = Result<String, ControllerError>;
 
     fn handle(&mut self, msg: GetOutput, _ctx: &mut Context<Self>) -> Self::Result {
-        trace!("Getting latest output for {}", msg.id);
         if let Some(instance) = self.services.get(&msg.id) {
             let tty_r = instance.tty.read().expect("Can't read tty!");
             let msg = tty_r

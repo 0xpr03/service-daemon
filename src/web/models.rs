@@ -11,12 +11,14 @@ pub struct ServiceRequest {
 pub struct NewUser {
     pub name: String,
     pub password: String,
+    pub email: String,
 }
 
 #[derive(Serialize)]
 pub struct MinUser {
     pub name: String,
     pub id: UID,
+    pub email: String,
 }
 
 #[derive(Serialize)]
@@ -34,5 +36,5 @@ pub enum LoginState {
 #[derive(Serialize)]
 pub enum CreateUserState {
     Success(UID),
-    NameClaimed,
+    EMailClaimed,
 }

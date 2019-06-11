@@ -70,7 +70,7 @@ lazy_static! {
 
 mod tree {
     pub const USER: &'static str = "USER";
-    pub const REL_NAME_UID: &'static str = "REL_NAME_UID";
+    pub const REL_MAIL_UID: &'static str = "REL_MAIL_UID";
     pub const META: &'static str = "META";
     pub const PERMISSION: &'static str = "PERMISSIONS";
     pub const LOGINS: &'static str = "LOGINS";
@@ -79,17 +79,6 @@ mod tree {
 
 mod meta {
     pub const USER_AUTO_ID: &'static str = "USER_AUTO_ID";
-}
-
-mod user {
-    pub const NAME: &'static str = "NAME";
-    pub const PASSWORD: &'static str = "PASSWORD";
-    pub const KEY_ID: &'static str = "ID";
-}
-
-mod permission {
-    pub const KEY_ID: &'static str = "ID";
-    // const USER: &'static str
 }
 
 #[derive(Clone)]
@@ -151,48 +140,49 @@ impl DB {
     fn is_valid_uid(&self, id: &UID) -> Result<bool> {
         Ok(self.open_tree(tree::USER)?.contains_key(ser!(id))?)
     }
-    /// CHeck if name is valid (taken)
-    fn is_valid_name(&self, name: &str) -> Result<bool> {
+    /// Check if mail is taken
+    fn is_mail_taken(&self, mail: &str) -> Result<bool> {
         Ok(self
-            .open_tree(tree::REL_NAME_UID)?
-            .contains_key(ser!(name))?)
+            .open_tree(tree::REL_MAIL_UID)?
+            .contains_key(ser!(mail))?)
     }
     /// Inner function to simulate transaction
     fn create_user_inner(&self, new_user: NewUser, id: UID) -> Result<FullUser> {
         let user = FullUser {
             id,
+            email: new_user.email,
             name: new_user.name,
             password: super::bcrypt_password(&new_user.password)
                 .map_err(|e| DBError::EncryptioNError(e))?,
             totp_secret: None,
         };
         self.open_tree(tree::USER)?.set(ser!(id), ser!(user))?;
-        self.open_tree(tree::REL_NAME_UID)?
-            .set(ser!(user.name), ser!(id))?;
+        self.open_tree(tree::REL_MAIL_UID)?
+            .set(ser!(user.email), ser!(id))?;
         Ok(user)
     }
 }
 
 impl super::DBInterface for DB {
     fn create_user(&self, new_user: NewUser) -> Result<FullUser> {
-        let name_ser = ser!(new_user.name);
+        let mail_ser = ser!(new_user.email);
         let claimed = self
-            .open_tree(tree::REL_NAME_UID)?
-            .fetch_and_update(&name_ser, |v| {
+            .open_tree(tree::REL_MAIL_UID)?
+            .fetch_and_update(&mail_ser, |v| {
                 match v {
                     None => Some(RES_V.to_vec()), // lock
                     Some(v) => Some(v.to_vec()),
                 }
             })?;
         if claimed.is_some() {
-            return Err(super::Error::NameExists(new_user.name));
+            return Err(super::Error::EMailExists(new_user.email));
         }
         // first get ID, otherwise release lock
         let id = match self.gen_user_id_secure() {
             Ok(id) => id,
             Err(e) => {
-                // make sure to clean the name lock
-                self.open_tree(tree::REL_NAME_UID)?.del(name_ser)?;
+                // make sure to clean the mail lock
+                self.open_tree(tree::REL_MAIL_UID)?.del(mail_ser)?;
                 return Err(e);
             }
         };
@@ -200,8 +190,8 @@ impl super::DBInterface for DB {
         match self.create_user_inner(new_user, id) {
             Ok(user) => Ok(user),
             Err(e) => {
-                // make sure to clean the name lock
-                self.open_tree(tree::REL_NAME_UID)?.del(name_ser)?;
+                // make sure to clean the mail lock
+                self.open_tree(tree::REL_MAIL_UID)?.del(mail_ser)?;
                 // erase user entry
                 self.open_tree(tree::USER)?.del(ser!(id))?;
                 return Err(e);
@@ -217,6 +207,7 @@ impl super::DBInterface for DB {
             users.push(MinUser {
                 name: user.name,
                 id: user.id,
+                email: user.email,
             });
         }
         Ok(users)
@@ -263,11 +254,11 @@ impl super::DBInterface for DB {
     }
 
     fn update_user(&self, user: FullUser) -> Result<()> {
-        let old_name = self.get_user(user.id)?.name;
+        let old_email = self.get_user(user.id)?.email;
         self.open_tree(tree::USER)?.set(ser!(user.id), ser!(user))?;
-        let tree = self.open_tree(tree::REL_NAME_UID)?;
-        tree.set(ser!(user.name), ser!(user.id))?;
-        tree.del(ser!(old_name))?;
+        let tree = self.open_tree(tree::REL_MAIL_UID)?;
+        tree.set(ser!(user.email), ser!(user.id))?;
+        tree.del(ser!(old_email))?;
         Ok(())
     }
 
@@ -276,7 +267,7 @@ impl super::DBInterface for DB {
             Some(u) => deserialize(&u)?,
             None => return Err(super::Error::InvalidUser(id).into()),
         };
-        self.open_tree(tree::REL_NAME_UID)?.del(ser!(user.name))?;
+        self.open_tree(tree::REL_MAIL_UID)?.del(ser!(user.email))?;
         self.open_tree(tree::PERMISSION)?.del(ser!(id))?;
         Ok(())
     }
@@ -289,8 +280,8 @@ impl super::DBInterface for DB {
         Ok(deserialize(&v)?)
     }
 
-    fn get_id_by_name(&self, name: &str) -> Result<Option<UID>> {
-        let data = self.open_tree(tree::REL_NAME_UID)?.get(serr!(name))?;
+    fn get_id_by_email(&self, email: &str) -> Result<Option<UID>> {
+        let data = self.open_tree(tree::REL_MAIL_UID)?.get(serr!(email))?;
 
         if let Some(v) = data {
             let id = deserialize(&v)?;

@@ -63,7 +63,7 @@ pub struct ServiceMin {
 }
 
 pub struct LoginUser {
-    pub name: String,
+    pub email: String,
     pub password: String,
     pub session: String,
 }
@@ -102,6 +102,7 @@ impl Message for EditUser {
 #[derive(PartialEq)]
 pub enum EditUserData {
     Name(String),
+    Mail(String),
     Permission(Vec<String>),
     Password(String),
     TOTP(String),
