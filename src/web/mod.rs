@@ -24,10 +24,7 @@ pub fn start() -> std::io::Result<Server> {
                     .http_only(false),
             )
             .data(web::JsonConfig::default().limit(4096))
-            // .service(
-            //     web::resource("/api/login")
-            //         .route(web::get().to_async(api::login)),
-            // )
+            .service(web::resource("/api/login").route(web::post().to_async(api::login)))
             .service(
                 web::resource("/api/service/{service}/output")
                     .route(web::get().to_async(api::output)),

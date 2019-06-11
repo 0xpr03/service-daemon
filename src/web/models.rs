@@ -33,6 +33,12 @@ pub enum LoginState {
     SetupTOTP,
 }
 
+#[derive(Deserialize)]
+pub struct Login {
+    pub email: String,
+    pub password: String,
+}
+
 #[derive(Serialize)]
 pub enum CreateUserState {
     Success(UID),
