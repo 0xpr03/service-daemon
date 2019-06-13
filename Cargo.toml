@@ -15,6 +15,7 @@ remote = ["mysql"]
 [dependencies]
 actix = "0.8"
 actix-web = "1"
+actix-files = "0.1"
 actix-session = "0.1"
 config = "0.9"
 oath = "0.10"

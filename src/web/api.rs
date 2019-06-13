@@ -143,7 +143,6 @@ pub fn services() -> impl Future<Item = HttpResponse, Error = Error> {
     ServiceController::from_registry()
         .send(GetServices {})
         .map_err(Error::from)
-        // .map_err(|e|{ error!("{}", e); ()})
         .map(|response| match response {
             Ok(v) => HttpResponse::Ok().json(v),
             Err(e) => {

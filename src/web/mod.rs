@@ -9,6 +9,7 @@ use actix::prelude::*;
 use actix_session::{CookieSession, Session};
 use actix_web::dev::Server;
 use actix_web::{web, App, Error, HttpResponse, HttpServer};
+use actix_files as fs;
 
 fn test_u64() -> impl Future<Item = HttpResponse, Error = Error> {
     use futures::future::result;
@@ -23,27 +24,31 @@ pub fn start() -> std::io::Result<Server> {
                     .secure(false)
                     .http_only(false),
             )
-            .data(web::JsonConfig::default().limit(4096))
-            .service(web::resource("/api/login").route(web::post().to_async(api::login)))
             .service(
-                web::resource("/api/service/{service}/output")
-                    .route(web::get().to_async(api::output)),
+                web::scope("/api")
+                    .data(web::JsonConfig::default().limit(4096))
+                    .service(web::resource("/login").route(web::post().to_async(api::login)))
+                    .service(
+                        web::resource("/service/{service}/output")
+                            .route(web::get().to_async(api::output)),
+                    )
+                    .service(
+                        web::resource("/service/{service}/input")
+                            .route(web::post().to_async(api::input)),
+                    )
+                    .service(
+                        web::resource("/service/{service}/stop")
+                            .route(web::post().to_async(api::stop)),
+                    )
+                    .service(
+                        web::resource("/service/{service}/start")
+                            .route(web::post().to_async(api::start)),
+                    )
+                    .service(web::resource("/service").route(web::get().to_async(api::services))),
             )
-            .service(
-                web::resource("/api/service/{service}/input")
-                    .route(web::post().to_async(api::input)),
-            )
-            .service(
-                web::resource("/api/service/{service}/stop").route(web::post().to_async(api::stop)),
-            )
-            .service(
-                web::resource("/api/service/{service}/start")
-                    .route(web::post().to_async(api::start)),
-            )
-            .service(web::resource("/api/service").route(web::get().to_async(api::services)))
-            .service(web::resource("/api/test").route(web::get().to_async(test_u64)))
             // todo: debug only!
             .service(web::resource("/{service}").route(web::get().to_async(api::index)))
+            .service(fs::Files::new("/", "./static/").index_file("index.html"))
     })
     // let ServiceController handle signals
     // .disable_signals()
