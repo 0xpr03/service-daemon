@@ -4,14 +4,14 @@
 
 Rust based process controller allowing to start/stop/input processes via your browser.
 
- [ ] Web Interface
- [ ] 2FA Authentification
- [X] Autostart
- [X] Stdout & Stderr
- [X] Stdin control
- [X] Start/Stop
- [X] Auto-Restart
- [X] View exit codes etc
+- [ ] Web Interface
+- [ ] 2FA Authentification
+- [X] Autostart
+- [X] Stdout & Stderr
+- [X] Stdin control
+- [X] Start/Stop
+- [X] Auto-Restart
+- [X] View exit codes etc
 
 ### Why ?
 
