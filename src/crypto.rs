@@ -2,7 +2,7 @@ use rand::thread_rng;
 use rand::Rng;
 // use crate::db::models::{TOTP,TOTP_Mode};
 use crate::db::models::*;
-use bcrypt::{hash, verify, BcryptResult, DEFAULT_COST};
+use bcrypt::{hash, verify, BcryptResult};
 use data_encoding::BASE32;
 use oath::{totp_raw_now, HashType};
 
@@ -33,12 +33,15 @@ pub fn totp_calculate(secret: &[u8]) -> u64 {
     totp_raw_now(secret, TOTP_DIGITS, 0, TOTP_TIME_WINDOW, &TOTP_HASH)
 }
 
-pub fn bcrypt_password(password: &str) -> BcryptResult<String> {
-    hash(password, DEFAULT_COST)
+pub fn bcrypt_password(password: &str, cost: u32) -> BcryptResult<String> {
+    hash(password, cost)
 }
 
 pub fn bcrypt_verify(password: &str, hash: &str) -> BcryptResult<bool> {
-    verify(password, hash)
+    let start = std::time::Instant::now();
+    let res = verify(password, hash);
+    debug!("Took {}ms to verify", start.elapsed().as_millis());
+    res
 }
 
 #[cfg(test)]

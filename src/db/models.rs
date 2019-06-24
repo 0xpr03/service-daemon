@@ -1,4 +1,4 @@
-pub use crate::web::models::{MinUser, NewUser, UID};
+pub use crate::web::models::{MinUser, NewUserEncrypted, UID};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]

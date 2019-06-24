@@ -4,10 +4,10 @@ use super::error::UserError;
 use crate::crypto::*;
 use crate::db;
 use crate::db::{
-    models::{ActiveLogin, FullUser, NewUser},
+    models::{ActiveLogin, FullUser},
     DBInterface, DB,
 };
-use crate::web::models::{CreateUserState, LoginState, UID};
+use crate::web::models::{CreateUserState, LoginState, NewUser, NewUserEncrypted, UID};
 use actix::prelude::*;
 use metrohash::MetroHashMap;
 use rand::distributions::Alphanumeric;
@@ -31,6 +31,7 @@ lazy_static! {
 
 /// Service for handling user related things
 pub struct UserService {
+    brcypt_cost: u32,
     login_incomplete: MetroHashMap<String, UID>,
 }
 
@@ -54,7 +55,12 @@ impl UserService {
         }
     }
     fn create_user_unchecked(&self, user: NewUser) -> Result<CreateUserState, UserError> {
-        let v = DB.create_user(user);
+        let user_enc = NewUserEncrypted {
+            email: user.email,
+            name: user.name,
+            password_enc: bcrypt_password(&user.password, self.brcypt_cost)?,
+        };
+        let v = DB.create_user(user_enc);
         match v {
             Err(e) => {
                 if let db::Error::EMailExists(_) = e {
@@ -70,6 +76,7 @@ impl UserService {
 impl Default for UserService {
     fn default() -> Self {
         Self {
+            brcypt_cost: 12,
             login_incomplete: MetroHashMap::default(),
         }
     }
@@ -94,6 +101,7 @@ impl Handler<StartupCheck> for UserService {
                 .map(|()| rng.sample(Alphanumeric))
                 .take(ROOT_PASSWORD_LENGTH)
                 .collect();
+            let start = std::time::Instant::now();
             match self.create_user_unchecked(NewUser {
                 name: ROOT_NAME.to_string(),
                 password: password.clone(),
@@ -101,6 +109,15 @@ impl Handler<StartupCheck> for UserService {
             })? {
                 CreateUserState::Success(uid) => {
                     assert_eq!(uid, DB.get_root_id());
+                    let end = start.elapsed().as_millis();
+                    if end > 2_000 {
+                        warn!(
+                            "Took {} ms to encrypt password using current configuration!",
+                            end
+                        );
+                    } else {
+                        info!("Took {} ms to encrypt password.", end)
+                    }
                     info!("Created root user:");
                     info!("Email: {} Passwort: {}", ROOT_EMAIL, password);
                     info!("Please login to setup 2FA!");
@@ -139,7 +156,7 @@ impl Handler<LoginUser> for UserService {
                         id: uid,
                     }),
                 )?;
-                Ok(LoginState::Requires_TOTP_Setup(user.totp))
+                Ok(LoginState::Requires_TOTP_Setup(user.totp.into()))
             }
         } else {
             DB.set_login(&msg.session, None)?;
@@ -158,7 +175,7 @@ impl Handler<CheckSession> for UserService {
                 DBLoginState::Complete => LoginState::LoggedIn,
                 DBLoginState::Missing_2FA => LoginState::Requires_TOTP,
                 DBLoginState::Requires_2FA_Setup => {
-                    LoginState::Requires_TOTP_Setup(DB.get_user(v.id)?.totp)
+                    LoginState::Requires_TOTP_Setup(DB.get_user(v.id)?.totp.into())
                 }
             },
             None => LoginState::NotLoggedIn,
@@ -186,6 +203,14 @@ impl Handler<CreateUser> for UserService {
             return Err(UserError::InvalidPermissions);
         }
         self.create_user_unchecked(msg.user)
+    }
+}
+
+impl Handler<SetPasswordCost> for UserService {
+    type Result = ();
+
+    fn handle(&mut self, msg: SetPasswordCost, _ctx: &mut Context<Self>) {
+        self.brcypt_cost = msg.cost;
     }
 }
 
@@ -217,7 +242,9 @@ impl Handler<EditUser> for UserService {
             match msg.data {
                 EditUserData::Name(name) => user.name = name,
                 EditUserData::Mail(email) => user.email = email,
-                EditUserData::Password(pw) => user.password = bcrypt_password(&pw)?,
+                EditUserData::Password(pw) => {
+                    user.password = bcrypt_password(&pw, self.brcypt_cost)?
+                }
                 // EditUserData::TOTP(secret) => user.totp_secret = secret,
                 EditUserData::Permission(_) => unreachable!(),
             }

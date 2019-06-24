@@ -217,7 +217,7 @@ impl Handler<LoadServices> for ServiceController {
     }
 }
 
-pub type LoadedService = Instance;
+type LoadedService = Instance;
 
 struct Instance {
     model: Service,

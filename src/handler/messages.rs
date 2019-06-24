@@ -1,5 +1,4 @@
 use super::error::*;
-use crate::handler::user;
 use crate::settings::Service;
 use crate::web::models::*;
 use actix::prelude::*;
@@ -18,6 +17,11 @@ pub struct StartupCheck {}
 #[derive(Message)]
 pub struct LoadServices {
     pub data: Vec<Service>,
+}
+
+#[derive(Message)]
+pub struct SetPasswordCost {
+    pub cost: u32,
 }
 
 pub struct StartService {

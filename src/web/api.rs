@@ -1,11 +1,10 @@
-use crate::handler::error::*;
 use crate::handler::service::ServiceController;
 use crate::handler::user::UserService;
 use crate::messages::*;
 use crate::web::models::*;
 use actix::prelude::*;
 use actix_identity::*;
-use actix_web::{error::ResponseError, web, App, Error, HttpResponse, Responder};
+use actix_web::{error::ResponseError, web, Error, HttpResponse};
 use futures::future::{err, ok, Either};
 use nanoid;
 

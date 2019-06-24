@@ -38,7 +38,7 @@ fn get_current_time() -> u64 {
 }
 
 pub trait DBInterface {
-    fn create_user(&self, user: NewUser) -> Result<FullUser>;
+    fn create_user(&self, user: NewUserEncrypted) -> Result<FullUser>;
     fn delete_user(&self, id: UID) -> Result<()>;
     fn get_user(&self, id: UID) -> Result<FullUser>;
     fn get_id_by_email(&self, email: &str) -> Result<Option<UID>>;
@@ -49,9 +49,6 @@ pub trait DBInterface {
     fn get_login(&self, login: &str) -> Result<Option<ActiveLogin>>;
     fn set_login(&self, login: &str, state: Option<ActiveLogin>) -> Result<()>;
     fn update_login(&self, login: &str) -> Result<()>;
-    /// Retrieve session private key
-    fn get_session_pk(&self) -> Result<Option<Vec<u8>>>;
-    fn set_session_pk(&self, key: &[u8]) -> Result<()>;
     fn get_root_id(&self) -> UID;
 }
 

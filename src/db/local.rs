@@ -17,8 +17,6 @@ pub enum DBError {
     SledError(#[cause] failure::Error),
     #[fail(display = "Interal failure with invalid Data {}", _0)]
     BincodeError(#[cause] Box<bincode::ErrorKind>),
-    #[fail(display = "Internal failure to apply bcrypt to password! {}", _0)]
-    EncryptioNError(#[cause] bcrypt::BcryptError),
 }
 
 impl From<Box<bincode::ErrorKind>> for DBError {
@@ -43,12 +41,6 @@ impl From<Box<bincode::ErrorKind>> for super::Error {
         super::Error::InternalError(error.into())
     }
 }
-
-// impl From<pagecache::Error> for DBError {
-//     fn from(error: pagecache::Error) -> Self {
-//         DBError::SledError2(error)
-//     }
-// }
 
 macro_rules! ser {
     ($expression:expr) => {
@@ -79,7 +71,6 @@ mod tree {
 
 mod meta {
     pub const USER_AUTO_ID: &'static str = "USER_AUTO_ID";
-    pub const SESSION_PRIVATE_KEY: &'static str = "SESSION_PRIVATE_KEY";
 }
 
 #[derive(Clone)]
@@ -148,14 +139,13 @@ impl DB {
             .contains_key(ser!(mail))?)
     }
     /// Inner function to simulate transaction
-    fn create_user_inner(&self, new_user: NewUser, id: UID) -> Result<FullUser> {
+    fn create_user_inner(&self, new_user: NewUserEncrypted, id: UID) -> Result<FullUser> {
         let user = FullUser {
             id,
             email: new_user.email,
             verified: false,
             name: new_user.name,
-            password: crypto::bcrypt_password(&new_user.password)
-                .map_err(|e| DBError::EncryptioNError(e))?,
+            password: new_user.password_enc,
             totp: crypto::totp_gen_secret(),
             totp_complete: false,
         };
@@ -170,19 +160,8 @@ impl super::DBInterface for DB {
     fn get_root_id(&self) -> UID {
         MIN_UID
     }
-    fn get_session_pk(&self) -> Result<Option<Vec<u8>>> {
-        if let Some(v) = self.open_tree(tree::META)?.get(meta::SESSION_PRIVATE_KEY)? {
-            return Ok(Some(deserialize(&v)?));
-        }
-        Ok(None)
-    }
-    fn set_session_pk(&self, key: &[u8]) -> Result<()> {
-        self.open_tree(tree::META)?
-            .set(meta::SESSION_PRIVATE_KEY, ser!(key))?;
-        Ok(())
-    }
 
-    fn create_user(&self, new_user: NewUser) -> Result<FullUser> {
+    fn create_user(&self, new_user: NewUserEncrypted) -> Result<FullUser> {
         let mail_ser = ser!(new_user.email);
         let claimed = self
             .open_tree(tree::REL_MAIL_UID)?

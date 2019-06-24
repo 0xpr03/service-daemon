@@ -3,22 +3,15 @@ pub mod api;
 pub mod models;
 pub mod websocket;
 
-use crate::handler::service::ServiceController;
-use crate::messages;
-use actix::prelude::*;
 use actix_files as fs;
 use actix_identity::*;
 use actix_web::cookie::SameSite;
 use actix_web::dev::Server;
 use actix_web::middleware::Logger;
 
-use actix_web::{web, App, Error, HttpResponse, HttpServer};
-fn test_u64() -> impl Future<Item = HttpResponse, Error = Error> {
-    use futures::future::result;
-    result(Ok(HttpResponse::Ok().json(u64::max_value())))
-}
+use actix_web::{web, App, HttpServer};
 
-pub fn start(domain: String, max_age_secs: i64, secret: Vec<u8>) -> std::io::Result<Server> {
+pub fn start(domain: String, max_age_secs: i64) -> std::io::Result<Server> {
     Ok(HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())

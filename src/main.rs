@@ -11,8 +11,6 @@ use crate::handler::user::UserService;
 
 use actix;
 use actix::prelude::*;
-use actix::System;
-use actix_rt::Runtime;
 use failure::Fallible;
 use rand::Rng;
 
@@ -38,8 +36,6 @@ fn main() -> Fallible<()> {
 
     let sys = actix_rt::System::new("sc-web");
 
-    let cookie_secret = get_secret(settings.web.cookie_key)?;
-
     // TODO: we can't catch anything except sighub for child processes, hint was to look into daemon(1)
     // let sigint = Signal::new(SIGINT).flatten_stream();
     // let sigterm = Signal::new(SIGTERM).flatten_stream();
@@ -59,43 +55,22 @@ fn main() -> Fallible<()> {
         })
         .map_err(|_| ());
     actix::spawn(startup);
-    let user_check = UserService::from_registry()
+    let crypto_setup = UserService::from_registry()
+        .send(messages::SetPasswordCost{cost: settings.security.bcrypt_cost})
+        .and_then(|_|{
+            UserService::from_registry()
         .send(messages::StartupCheck {})
+        })
         .map(|_| ())
         .map_err(|e| error!("User-Service startup check failed! {}", e));
-    actix::spawn(user_check);
+    actix::spawn(crypto_setup);
     let _ = web::start(
         settings.web.domain,
         settings.web.max_session_age_secs,
-        cookie_secret,
     );
     sys.run()?;
 
     Ok(())
-}
-
-fn get_secret(config: Option<Vec<u8>>) -> Fallible<Vec<u8>> {
-    use db::{DBInterface, DB};
-    if let Some(v) = config {
-        info!("Using manual cookie key.");
-        return Ok(v);
-    }
-    if let Some(v) = DB.get_session_pk()? {
-        info!("Using stored cookie key.");
-        return Ok(v);
-    }
-    info!("No cookie key found, generating..");
-    let mut rng = rand::thread_rng();
-    // 30 min. for actix session secret, using 32 as min
-    let size = rng.gen_range(32, 64);
-
-    let mut vec: Vec<u8> = vec![0; size];
-
-    for x in vec.iter_mut() {
-        *x = rng.gen();
-    }
-    DB.set_session_pk(&vec)?;
-    Ok(vec)
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Settings {
     pub web: Web,
-    pub database: Database,
+    pub database: Option<Database>,
     pub services: Vec<Service>,
     pub security: Security,
 }
@@ -13,12 +13,12 @@ pub struct Settings {
 pub struct Web {
     pub domain: String,
     pub max_session_age_secs: i64,
-    pub cookie_key: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Security {
     pub password_min_length: usize,
+    pub bcrypt_cost: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -67,17 +67,17 @@ mod tests {
     #[ignore]
     fn test_serialize() {
         let settings = Settings {
-            database: Database {
+            database: Some(Database {
                 url: "test url".to_owned(),
                 password: "12345".to_owned(),
-            },
+            }),
             security: Security {
                 password_min_length: 10,
+                bcrypt_cost: 10,
             },
             web: Web {
                 domain: String::from("example.com"),
                 max_session_age_secs: 60,
-                cookie_key: None,
             },
             services: vec![
                 Service {
