@@ -1,9 +1,9 @@
 use super::models::*;
-use super::{Error, Result};
+use super::Result;
+use crate::crypto;
 use bincode::{deserialize, serialize};
 
 use failure;
-use failure::Fallible;
 use sled::*;
 use std::sync::Arc;
 
@@ -79,6 +79,7 @@ mod tree {
 
 mod meta {
     pub const USER_AUTO_ID: &'static str = "USER_AUTO_ID";
+    pub const SESSION_PRIVATE_KEY: &'static str = "SESSION_PRIVATE_KEY";
 }
 
 #[derive(Clone)]
@@ -151,10 +152,12 @@ impl DB {
         let user = FullUser {
             id,
             email: new_user.email,
+            verified: false,
             name: new_user.name,
-            password: super::bcrypt_password(&new_user.password)
+            password: crypto::bcrypt_password(&new_user.password)
                 .map_err(|e| DBError::EncryptioNError(e))?,
-            totp_secret: None,
+            totp_secret: crypto::totp_gen_secret(),
+            totp_complete: false,
         };
         self.open_tree(tree::USER)?.set(ser!(id), ser!(user))?;
         self.open_tree(tree::REL_MAIL_UID)?
@@ -164,6 +167,21 @@ impl DB {
 }
 
 impl super::DBInterface for DB {
+    fn get_root_id(&self) -> UID {
+        MIN_UID
+    }
+    fn get_session_pk(&self) -> Result<Option<Vec<u8>>> {
+        if let Some(v) = self.open_tree(tree::META)?.get(meta::SESSION_PRIVATE_KEY)? {
+            return Ok(Some(deserialize(&v)?));
+        }
+        Ok(None)
+    }
+    fn set_session_pk(&self, key: &[u8]) -> Result<()> {
+        self.open_tree(tree::META)?
+            .set(meta::SESSION_PRIVATE_KEY, ser!(key))?;
+        Ok(())
+    }
+
     fn create_user(&self, new_user: NewUser) -> Result<FullUser> {
         let mail_ser = ser!(new_user.email);
         let claimed = self

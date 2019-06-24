@@ -8,8 +8,6 @@ mod remote;
 use remote::{DBError, DB as InnerDB};
 
 use crate::web::models::*;
-use actix::prelude::*;
-use bcrypt::{hash, verify, BcryptResult, DEFAULT_COST};
 use models::*;
 
 pub type Result<T> = ::std::result::Result<T, Error>;
@@ -24,14 +22,6 @@ pub enum Error {
     InvalidName(String),
     #[fail(display = "User mail {} exists already!", _0)]
     EMailExists(String),
-}
-
-pub fn bcrypt_password(password: &str) -> BcryptResult<String> {
-    hash(password, DEFAULT_COST)
-}
-
-pub fn bcrypt_verify(password: &str, hash: &str) -> BcryptResult<bool> {
-    verify(password, hash)
 }
 
 impl From<DBError> for Error {
@@ -59,6 +49,10 @@ pub trait DBInterface {
     fn get_login(&self, login: &str) -> Result<Option<ActiveLogin>>;
     fn set_login(&self, login: &str, state: Option<ActiveLogin>) -> Result<()>;
     fn update_login(&self, login: &str) -> Result<()>;
+    /// Retrieve session private key
+    fn get_session_pk(&self) -> Result<Option<Vec<u8>>>;
+    fn set_session_pk(&self, key: &[u8]) -> Result<()>;
+    fn get_root_id(&self) -> UID;
 }
 
 lazy_static! {

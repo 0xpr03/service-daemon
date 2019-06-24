@@ -1,11 +1,23 @@
 use super::messages::*;
 
+use super::error::UserError;
+use crate::crypto::*;
 use crate::db;
-use crate::db::{bcrypt_verify, models::ActiveLogin, DBInterface, DB};
+use crate::db::{
+    models::{ActiveLogin, FullUser, NewUser},
+    DBInterface, DB,
+};
 use crate::web::models::{CreateUserState, LoginState, UID};
 use actix::prelude::*;
-use bcrypt::BcryptError;
 use metrohash::MetroHashMap;
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
+use std::iter;
+
+const ROOT_NAME: &'static str = "Root";
+const ROOT_EMAIL: &'static str = "root@localhost";
+const ROOT_PASSWORD_LENGTH: usize = 20;
+const CLEANUP_INTERVAL: u64 = 60 * 20; // seconds
 
 lazy_static! {
     static ref PERM_ROOT: String = String::from("ROOT");
@@ -23,7 +35,10 @@ pub struct UserService {
 }
 
 impl UserService {
-    fn has_permission(&self, uid: UID, perm: &String) -> Result<bool, Error> {
+    fn cleanup_sessions(&mut self, context: &mut Context<Self>) {
+        trace!("TODO: Cleanup user sessions");
+    }
+    fn has_permission(&self, uid: UID, perm: &String) -> Result<bool, UserError> {
         // &String due to https://github.com/rust-lang/rust/issues/42671
         let perms = DB.get_user_permissions(uid)?;
         if perms.contains(perm) {
@@ -31,88 +46,15 @@ impl UserService {
         }
         Ok(perms.contains(&PERM_ROOT))
     }
-}
-
-#[derive(Fail, Debug)]
-pub enum Error {
-    #[fail(display = "Internal DB error {}", _0)]
-    DBError(db::Error),
-    #[fail(display = "Error with password hashing! {}", _0)]
-    HashError(#[cause] BcryptError),
-    #[fail(display = "Lacking permissions!")]
-    InvalidPermissions,
-}
-
-impl From<bcrypt::BcryptError> for Error {
-    fn from(error: bcrypt::BcryptError) -> Self {
-        Error::HashError(error)
-    }
-}
-impl From<db::Error> for Error {
-    fn from(error: db::Error) -> Self {
-        Error::DBError(error)
-    }
-}
-
-impl Default for UserService {
-    fn default() -> Self {
-        Self {
-            login_incomplete: MetroHashMap::default(),
+    fn get_root_user(&self) -> Result<Option<FullUser>, UserError> {
+        match DB.get_user(DB.get_root_id()) {
+            Ok(user) => Ok(Some(user)),
+            Err(db::Error::InvalidUser(_)) => Ok(None),
+            Err(e) => Err(e.into()),
         }
     }
-}
-
-impl Handler<LoginUser> for UserService {
-    type Result = Result<LoginState, Error>;
-
-    fn handle(&mut self, msg: LoginUser, _ctx: &mut Context<Self>) -> Self::Result {
-        self.login_incomplete.remove(&msg.session);
-        let uid = match DB.get_id_by_email(&msg.email)? {
-            Some(v) => v,
-            None => return Ok(LoginState::Failed),
-        };
-        let user = DB.get_user(uid)?;
-        if bcrypt_verify(&msg.password, &user.password)? {
-            if user.totp_secret.is_some() {
-                self.login_incomplete.insert(msg.session, uid);
-                Ok(LoginState::TOTP)
-            } else {
-                DB.set_login(
-                    &msg.session,
-                    Some(ActiveLogin {
-                        incomplete: true,
-                        id: uid,
-                    }),
-                )?;
-                Ok(LoginState::SetupTOTP)
-            }
-        } else {
-            DB.set_login(&msg.session, None)?;
-            Ok(LoginState::Failed)
-        }
-    }
-}
-
-impl Handler<LogoutUser> for UserService {
-    type Result = Result<(), Error>;
-
-    fn handle(&mut self, msg: LogoutUser, _ctx: &mut Context<Self>) -> Self::Result {
-        DB.set_login(&msg.session, None)?;
-
-        warn!("Not handling websocket DC!");
-        //TODO: kick from websocket
-        Ok(())
-    }
-}
-
-impl Handler<CreateUser> for UserService {
-    type Result = Result<CreateUserState, Error>;
-
-    fn handle(&mut self, msg: CreateUser, _ctx: &mut Context<Self>) -> Self::Result {
-        if !self.has_permission(msg.invoker, &PERM_CREATE_USER)? {
-            return Err(Error::InvalidPermissions);
-        }
-        let v = DB.create_user(msg.user);
+    fn create_user_unchecked(&self, user: NewUser) -> Result<CreateUserState, UserError> {
+        let v = DB.create_user(user);
         match v {
             Err(e) => {
                 if let db::Error::EMailExists(_) = e {
@@ -125,8 +67,128 @@ impl Handler<CreateUser> for UserService {
     }
 }
 
+impl Default for UserService {
+    fn default() -> Self {
+        Self {
+            login_incomplete: MetroHashMap::default(),
+        }
+    }
+}
+
+impl Handler<StartupCheck> for UserService {
+    type Result = Result<(), UserError>;
+
+    fn handle(&mut self, _msg: StartupCheck, _ctx: &mut Context<Self>) -> Result<(), UserError> {
+        let user = self.get_root_user()?;
+        let create_root = user.is_none();
+        if let Some(user) = user {
+            if !user.totp_complete {
+                warn!("2FA setup incomplete for root!");
+            }
+        }
+
+        if create_root {
+            // TODO: use chacha20 once rand is compatible again with rand_chacha
+            let mut rng = rand::thread_rng();
+            let password: String = iter::repeat(())
+                .map(|()| rng.sample(Alphanumeric))
+                .take(ROOT_PASSWORD_LENGTH)
+                .collect();
+            match self.create_user_unchecked(NewUser {
+                name: ROOT_NAME.to_string(),
+                password: password.clone(),
+                email: ROOT_EMAIL.to_string(),
+            })? {
+                CreateUserState::Success(uid) => {
+                    assert_eq!(uid, DB.get_root_id());
+                    info!("Created root user:");
+                    info!("Email: {} Passwort: {}", ROOT_EMAIL, password);
+                    info!("Please login to setup 2FA!");
+                }
+                v => {
+                    return Err(UserError::InternalError(format!(
+                        "Couldn't create root user: {:?}",
+                        v
+                    )))
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Handler<LoginUser> for UserService {
+    type Result = Result<LoginState, UserError>;
+
+    fn handle(&mut self, msg: LoginUser, _ctx: &mut Context<Self>) -> Self::Result {
+        self.login_incomplete.remove(&msg.session);
+        let uid = match DB.get_id_by_email(&msg.email)? {
+            Some(v) => v,
+            None => return Ok(LoginState::NotLoggedIn),
+        };
+        let user = DB.get_user(uid)?;
+        if bcrypt_verify(&msg.password, &user.password)? {
+            if user.totp_complete {
+                self.login_incomplete.insert(msg.session, uid);
+                Ok(LoginState::Requires_TOTP)
+            } else {
+                DB.set_login(
+                    &msg.session,
+                    Some(ActiveLogin {
+                        state: db::models::LoginState::Requires_2FA_Setup,
+                        id: uid,
+                    }),
+                )?;
+                Ok(LoginState::Requires_TOTP_Setup)
+            }
+        } else {
+            DB.set_login(&msg.session, None)?;
+            Ok(LoginState::NotLoggedIn)
+        }
+    }
+}
+
+impl Handler<CheckSession> for UserService {
+    type Result = Result<LoginState, UserError>;
+
+    fn handle(&mut self, msg: CheckSession, _ctx: &mut Context<Self>) -> Self::Result {
+        use db::models::LoginState as DBLoginState;
+        Ok(match DB.get_login(&msg.session)? {
+            Some(v) => match v.state {
+                DBLoginState::Complete => LoginState::LoggedIn,
+                DBLoginState::Missing_2FA => LoginState::Requires_TOTP,
+                DBLoginState::Requires_2FA_Setup => LoginState::Requires_TOTP_Setup,
+            },
+            None => LoginState::NotLoggedIn,
+        })
+    }
+}
+
+impl Handler<LogoutUser> for UserService {
+    type Result = Result<(), UserError>;
+
+    fn handle(&mut self, msg: LogoutUser, _ctx: &mut Context<Self>) -> Self::Result {
+        DB.set_login(&msg.session, None)?;
+
+        warn!("Not handling websocket DC!");
+        //TODO: kick from websocket
+        Ok(())
+    }
+}
+
+impl Handler<CreateUser> for UserService {
+    type Result = Result<CreateUserState, UserError>;
+
+    fn handle(&mut self, msg: CreateUser, _ctx: &mut Context<Self>) -> Self::Result {
+        if !self.has_permission(msg.invoker, &PERM_CREATE_USER)? {
+            return Err(UserError::InvalidPermissions);
+        }
+        self.create_user_unchecked(msg.user)
+    }
+}
+
 impl Handler<EditUser> for UserService {
-    type Result = Result<bool, Error>;
+    type Result = Result<bool, UserError>;
 
     fn handle(&mut self, msg: EditUser, _ctx: &mut Context<Self>) -> Self::Result {
         if msg.invoker != msg.user_uid {
@@ -136,7 +198,7 @@ impl Handler<EditUser> for UserService {
                     self.has_permission(msg.invoker, &PERM_EDIT_PASSWORD)?
                 }
                 EditUserData::Permission(_) => self.has_permission(msg.invoker, &PERM_ROOT)?,
-                EditUserData::TOTP(_) => self.has_permission(msg.invoker, &PERM_EDIT_TOTP)?,
+                // EditUserData::TOTP(_) => self.has_permission(msg.invoker, &PERM_EDIT_TOTP)?,
                 EditUserData::Mail(_) => self.has_permission(msg.invoker, &PERM_EDIT_EMAIL)?,
             };
             if !required {
@@ -153,8 +215,8 @@ impl Handler<EditUser> for UserService {
             match msg.data {
                 EditUserData::Name(name) => user.name = name,
                 EditUserData::Mail(email) => user.email = email,
-                EditUserData::Password(pw) => user.password = db::bcrypt_password(&pw)?,
-                EditUserData::TOTP(secret) => user.totp_secret = Some(secret),
+                EditUserData::Password(pw) => user.password = bcrypt_password(&pw)?,
+                // EditUserData::TOTP(secret) => user.totp_secret = secret,
                 EditUserData::Permission(_) => unreachable!(),
             }
             DB.update_user(user)?;
@@ -167,4 +229,13 @@ impl SystemService for UserService {}
 impl Supervised for UserService {}
 impl Actor for UserService {
     type Context = Context<Self>;
+
+    fn started(&mut self, context: &mut Context<Self>) {
+        IntervalFunc::new(
+            std::time::Duration::from_secs(CLEANUP_INTERVAL),
+            Self::cleanup_sessions,
+        )
+        .finish()
+        .spawn(context);
+    }
 }

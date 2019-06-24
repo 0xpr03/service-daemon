@@ -3,9 +3,17 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Settings {
+    pub web: Web,
     pub database: Database,
     pub services: Vec<Service>,
     pub security: Security,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Web {
+    pub domain: String,
+    pub max_session_age_secs: i64,
+    pub cookie_key: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -65,6 +73,11 @@ mod tests {
             },
             security: Security {
                 password_min_length: 10,
+            },
+            web: Web {
+                domain: String::from("example.com"),
+                max_session_age_secs: 60,
+                cookie_key: None,
             },
             services: vec![
                 Service {

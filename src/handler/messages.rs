@@ -1,3 +1,4 @@
+use super::error::*;
 use super::service::ControllerError;
 use crate::handler::user;
 use crate::settings::Service;
@@ -10,6 +11,10 @@ pub struct ServiceStateChanged {
     pub id: usize,
     pub running: bool,
 }
+
+#[derive(Message)]
+#[rtype(result = "Result<(), UserError>")]
+pub struct StartupCheck {}
 
 #[derive(Message)]
 pub struct LoadServices {
@@ -62,6 +67,14 @@ pub struct ServiceMin {
     pub running: bool,
 }
 
+pub struct CheckSession {
+    pub session: String,
+}
+
+impl Message for CheckSession {
+    type Result = Result<LoginState, UserError>;
+}
+
 pub struct LoginUser {
     pub email: String,
     pub password: String,
@@ -69,7 +82,7 @@ pub struct LoginUser {
 }
 
 impl Message for LoginUser {
-    type Result = Result<LoginState, user::Error>;
+    type Result = Result<LoginState, UserError>;
 }
 
 pub struct LogoutUser {
@@ -77,7 +90,7 @@ pub struct LogoutUser {
 }
 
 impl Message for LogoutUser {
-    type Result = Result<(), user::Error>;
+    type Result = Result<(), UserError>;
 }
 
 pub struct CreateUser {
@@ -86,7 +99,7 @@ pub struct CreateUser {
 }
 
 impl Message for CreateUser {
-    type Result = Result<CreateUserState, user::Error>;
+    type Result = Result<CreateUserState, UserError>;
 }
 
 pub struct EditUser {
@@ -96,7 +109,7 @@ pub struct EditUser {
 }
 
 impl Message for EditUser {
-    type Result = Result<bool, user::Error>;
+    type Result = Result<bool, UserError>;
 }
 
 #[derive(PartialEq)]
@@ -105,5 +118,5 @@ pub enum EditUserData {
     Mail(String),
     Permission(Vec<String>),
     Password(String),
-    TOTP(String),
+    // TOTP(String),
 }

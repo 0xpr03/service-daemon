@@ -2,44 +2,44 @@ use serde::{Deserialize, Serialize};
 
 pub type UID = i32;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct ServiceRequest {
     pub service: usize,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct NewUser {
     pub name: String,
     pub password: String,
     pub email: String,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct MinUser {
     pub name: String,
     pub id: UID,
     pub email: String,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub enum LoginState {
     /// Success
     LoggedIn,
     /// Invalid credentials
-    Failed,
+    NotLoggedIn,
     /// totp-login required
-    TOTP,
+    Requires_TOTP,
     /// totp-setup required
-    SetupTOTP,
+    Requires_TOTP_Setup,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct Login {
     pub email: String,
     pub password: String,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub enum CreateUserState {
     Success(UID),
     EMailClaimed,

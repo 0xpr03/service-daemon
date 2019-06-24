@@ -15,9 +15,12 @@ remote = ["mysql"]
 [dependencies]
 actix = "0.8"
 actix-web = "1"
+actix-rt = "0.2"
 actix-files = "0.1"
-actix-session = "0.1"
+actix-identity = "0.1"
+nanoid = "0.2"
 config = "0.9"
+data-encoding = "2"
 oath = "0.10"
 bcrypt = "0.4"
 mysql = {version = "16", optional = true }
@@ -36,6 +39,7 @@ arraydeque = "0.4"
 futures = "0.1"
 lazy_static = "1"
 sysexit = "0.2"
+rand = "0.6"
 
 [dev-dependencies]
 toml = "0.5"
