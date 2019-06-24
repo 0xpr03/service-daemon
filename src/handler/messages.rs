@@ -88,6 +88,15 @@ impl Message for LoginUser {
     type Result = Result<LoginState, UserError>;
 }
 
+pub struct LoginTOTP {
+    pub session: String,
+    pub totp: u64,
+}
+
+impl Message for LoginTOTP {
+    type Result = Result<LoginState, UserError>;
+}
+
 pub struct LogoutUser {
     pub session: String,
 }

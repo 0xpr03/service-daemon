@@ -56,18 +56,14 @@ fn main() -> Fallible<()> {
         .map_err(|_| ());
     actix::spawn(startup);
     let crypto_setup = UserService::from_registry()
-        .send(messages::SetPasswordCost{cost: settings.security.bcrypt_cost})
-        .and_then(|_|{
-            UserService::from_registry()
-        .send(messages::StartupCheck {})
+        .send(messages::SetPasswordCost {
+            cost: settings.security.bcrypt_cost,
         })
+        .and_then(|_| UserService::from_registry().send(messages::StartupCheck {}))
         .map(|_| ())
         .map_err(|e| error!("User-Service startup check failed! {}", e));
     actix::spawn(crypto_setup);
-    let _ = web::start(
-        settings.web.domain,
-        settings.web.max_session_age_secs,
-    );
+    let _ = web::start(settings.web.domain, settings.web.max_session_age_secs);
     sys.run()?;
 
     Ok(())

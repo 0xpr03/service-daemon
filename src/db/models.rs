@@ -57,13 +57,14 @@ pub type UserPermissions = Vec<String>;
 pub struct ActiveLogin {
     pub id: UID,
     pub state: LoginState,
+    pub last_updated: std::time::SystemTime,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum LoginState {
-    Missing_2FA,
+    Missing2Fa,
     Complete,
-    Requires_2FA_Setup,
+    Requires2FaSetup,
 }
 
 pub type SessionPrivateKey = Vec<u8>;

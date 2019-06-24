@@ -47,11 +47,6 @@ macro_rules! ser {
         serialize(&$expression).unwrap()
     };
 }
-macro_rules! serr {
-    ($expression:expr) => {
-        serialize(&$expression).unwrap()
-    };
-}
 
 const MIN_UID: UID = 1;
 const RESERVED: UID = MIN_UID - 1;
@@ -223,30 +218,30 @@ impl super::DBInterface for DB {
         Ok(())
     }
 
-    fn get_login(&self, login: &str) -> Result<Option<ActiveLogin>> {
-        Ok(match self.open_tree(tree::LOGINS)?.get(serr!(login))? {
+    fn get_login(&self, session: &str) -> Result<Option<ActiveLogin>> {
+        Ok(match self.open_tree(tree::LOGINS)?.get(ser!(session))? {
             Some(v) => Some(deserialize(&v)?),
             None => None,
         })
     }
-    fn set_login(&self, login: &str, state: Option<ActiveLogin>) -> Result<()> {
+    fn set_login(&self, session: &str, state: Option<ActiveLogin>) -> Result<()> {
         let tree = self.open_tree(tree::LOGINS)?;
         match state {
             None => {
-                tree.del(serr!(login))?;
-                self.open_tree(tree::REL_LOGIN_SEEN)?.del(serr!(login))?;
+                tree.del(ser!(session))?;
+                self.open_tree(tree::REL_LOGIN_SEEN)?.del(ser!(session))?;
             }
             Some(state) => {
-                tree.set(serr!(login), ser!(state))?;
-                self.update_login(login)?;
+                tree.set(ser!(session), ser!(state))?;
+                self.update_login(session)?;
             }
         }
         Ok(())
     }
 
-    fn update_login(&self, login: &str) -> Result<()> {
+    fn update_login(&self, session: &str) -> Result<()> {
         self.open_tree(tree::REL_LOGIN_SEEN)?
-            .set(serr!(login), ser!(super::get_current_time()))?;
+            .set(ser!(session), ser!(super::get_current_time()))?;
         Ok(())
     }
 
@@ -278,7 +273,7 @@ impl super::DBInterface for DB {
     }
 
     fn get_id_by_email(&self, email: &str) -> Result<Option<UID>> {
-        let data = self.open_tree(tree::REL_MAIL_UID)?.get(serr!(email))?;
+        let data = self.open_tree(tree::REL_MAIL_UID)?.get(ser!(email))?;
 
         if let Some(v) = data {
             let id = deserialize(&v)?;

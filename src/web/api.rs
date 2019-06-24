@@ -88,6 +88,34 @@ fn login_core(session: String, data: Login) -> impl Future<Item = HttpResponse, 
         })
 }
 
+pub fn totp(data: web::Json<TOTPValue>, id: Identity) -> impl Future<Item = HttpResponse, Error = Error> {
+    let data = data.into_inner();
+    if let Some(session) = id.identity() {
+        Either::A(
+            UserService::from_registry()
+                .send(LoginTOTP {
+                    session: session.clone(),
+                    totp: data,
+                })
+                .from_err()
+                .and_then(|resp| {
+                    let v = match resp {
+                        Err(e) => return err(Error::from(e)),
+                        Ok(v) => v,
+                    };
+                    ok(match &v {
+                        LoginState::LoggedIn => HttpResponse::Accepted().json(v),
+                        LoginState::NotLoggedIn => HttpResponse::Forbidden().json(v),
+                        LoginState::Requires_TOTP => HttpResponse::Ok().json(v),
+                        LoginState::Requires_TOTP_Setup(_) => HttpResponse::Ok().json(v),
+                    })
+                }),
+        )
+    } else {
+        Either::B(ok(HttpResponse::BadRequest().json("invalid session")))
+    }
+}
+
 pub fn login(
     data: web::Json<Login>,
     id: Identity,

@@ -66,6 +66,8 @@ pub struct Login {
     pub password: String,
 }
 
+pub type TOTPValue = u64;
+
 #[derive(Debug, Serialize)]
 pub enum CreateUserState {
     Success(UID),

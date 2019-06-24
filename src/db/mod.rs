@@ -46,9 +46,12 @@ pub trait DBInterface {
     fn get_users(&self) -> Result<Vec<MinUser>>;
     fn get_user_permissions(&self, id: UID) -> Result<Vec<String>>;
     fn update_user_permission(&self, id: UID, perms: Vec<String>) -> Result<()>;
-    fn get_login(&self, login: &str) -> Result<Option<ActiveLogin>>;
-    fn set_login(&self, login: &str, state: Option<ActiveLogin>) -> Result<()>;
-    fn update_login(&self, login: &str) -> Result<()>;
+    /// Get session login
+    fn get_login(&self, session: &str) -> Result<Option<ActiveLogin>>;
+    /// Set session login
+    fn set_login(&self, session: &str, state: Option<ActiveLogin>) -> Result<()>;
+    /// Update session login timestamp
+    fn update_login(&self, session: &str) -> Result<()>;
     fn get_root_id(&self) -> UID;
 }
 

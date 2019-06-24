@@ -13,6 +13,7 @@ use metrohash::MetroHashMap;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use std::iter;
+use std::time::SystemTime;
 
 const ROOT_NAME: &'static str = "Root";
 const ROOT_EMAIL: &'static str = "root@localhost";
@@ -32,7 +33,6 @@ lazy_static! {
 /// Service for handling user related things
 pub struct UserService {
     brcypt_cost: u32,
-    login_incomplete: MetroHashMap<String, UID>,
 }
 
 impl UserService {
@@ -77,7 +77,6 @@ impl Default for UserService {
     fn default() -> Self {
         Self {
             brcypt_cost: 12,
-            login_incomplete: MetroHashMap::default(),
         }
     }
 }
@@ -134,28 +133,52 @@ impl Handler<StartupCheck> for UserService {
     }
 }
 
+impl Handler<LoginTOTP> for UserService {
+    type Result = Result<LoginState, UserError>;
+
+    fn handle(&mut self, msg: LoginTOTP, _ctx: &mut Context<Self>) -> Self::Result {
+        let login = match DB.get_login(&msg.session)? {
+            Some(v) => v,
+            None => return Ok(LoginState::NotLoggedIn),
+        };
+        let user = DB.get_user(login.id)?;
+        let expected_totp = totp_calculate(&user.totp);
+        if expected_totp == msg.totp {
+            // TODO: login
+
+            Ok(LoginState::LoggedIn)
+        } else {
+            Ok(match user.totp_complete {
+                true => LoginState::Requires_TOTP,
+                false => LoginState::Requires_TOTP_Setup(user.totp.into()),
+            })
+        }
+    }
+}
+
 impl Handler<LoginUser> for UserService {
     type Result = Result<LoginState, UserError>;
 
     fn handle(&mut self, msg: LoginUser, _ctx: &mut Context<Self>) -> Self::Result {
-        self.login_incomplete.remove(&msg.session);
+        DB.set_login(&msg.session,None)?;
         let uid = match DB.get_id_by_email(&msg.email)? {
             Some(v) => v,
             None => return Ok(LoginState::NotLoggedIn),
         };
         let user = DB.get_user(uid)?;
         if bcrypt_verify(&msg.password, &user.password)? {
+            let state = match user.totp_complete {
+                true => db::models::LoginState::Missing2Fa,
+                false => db::models::LoginState::Requires2FaSetup,
+            };
+            DB.set_login(&msg.session,Some(ActiveLogin {
+                state,
+                id: uid,
+                last_updated: SystemTime::now(),
+            }))?;
             if user.totp_complete {
-                self.login_incomplete.insert(msg.session, uid);
                 Ok(LoginState::Requires_TOTP)
             } else {
-                DB.set_login(
-                    &msg.session,
-                    Some(ActiveLogin {
-                        state: db::models::LoginState::Requires_2FA_Setup,
-                        id: uid,
-                    }),
-                )?;
                 Ok(LoginState::Requires_TOTP_Setup(user.totp.into()))
             }
         } else {
