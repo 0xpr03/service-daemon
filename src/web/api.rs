@@ -1,5 +1,5 @@
 use crate::handler::error::*;
-use crate::handler::service::{ControllerError, ServiceController};
+use crate::handler::service::ServiceController;
 use crate::handler::user::UserService;
 use crate::messages::*;
 use crate::web::models::*;
@@ -17,10 +17,7 @@ pub fn index(item: web::Path<ServiceRequest>) -> impl Future<Item = HttpResponse
         .map_err(Error::from)
         .map(|response| match response {
             Ok(v) => HttpResponse::Ok().body(v),
-            Err(e) => {
-                warn!("{}", e);
-                HttpResponse::InternalServerError().finish()
-            }
+            Err(e) => e.error_response(),
         })
 }
 
@@ -36,21 +33,7 @@ pub fn input(
         .map_err(Error::from)
         .map(|response| match response {
             Ok(()) => HttpResponse::Ok().finish(),
-            Err(e) => match e {
-                ControllerError::InvalidInstance(_) => {
-                    HttpResponse::BadRequest().body("invalid instance")
-                }
-                ControllerError::ServiceRunning => {
-                    HttpResponse::Conflict().body("Instance not running!")
-                }
-                ControllerError::BrokenPipe => {
-                    HttpResponse::InternalServerError().body("Broken pipe!")
-                }
-                v => {
-                    warn!("Error on stdin for service: {}", v);
-                    HttpResponse::InternalServerError().finish()
-                }
-            },
+            Err(e) => e.error_response(),
         })
 }
 
@@ -62,16 +45,7 @@ pub fn start(item: web::Path<ServiceRequest>) -> impl Future<Item = HttpResponse
         .map_err(Error::from)
         .map(|response| match response {
             Ok(()) => HttpResponse::Ok().finish(),
-            Err(e) => match e {
-                ControllerError::InvalidInstance(_) => {
-                    HttpResponse::BadRequest().body("invalid instance")
-                }
-                ControllerError::ServiceRunning => HttpResponse::Conflict().body("Already running"),
-                v => {
-                    warn!("Error starting service {}", v);
-                    HttpResponse::InternalServerError().finish()
-                }
-            },
+            Err(e) => e.error_response(),
         })
 }
 
@@ -83,16 +57,7 @@ pub fn stop(item: web::Path<ServiceRequest>) -> impl Future<Item = HttpResponse,
         .map_err(Error::from)
         .map(|response| match response {
             Ok(()) => HttpResponse::Ok().finish(),
-            Err(e) => match e {
-                ControllerError::InvalidInstance(_) => {
-                    HttpResponse::BadRequest().body("invalid instance")
-                }
-                ControllerError::ServiceStopped => HttpResponse::Conflict().body("Already stopped"),
-                v => {
-                    warn!("Error stopping service {}", v);
-                    HttpResponse::InternalServerError().finish()
-                }
-            },
+            Err(e) => e.error_response(),
         })
 }
 
@@ -111,10 +76,12 @@ fn login_core(session: String, data: Login) -> impl Future<Item = HttpResponse, 
         })
         .map_err(Error::from)
         .map(|resp| match resp {
-            Ok(LoginState::LoggedIn) => HttpResponse::Accepted().json("success"),
-            Ok(LoginState::NotLoggedIn) => HttpResponse::Forbidden().json("invalid_login"),
-            Ok(LoginState::Requires_TOTP) => HttpResponse::Ok().json("requires_totp"),
-            Ok(LoginState::Requires_TOTP_Setup) => HttpResponse::Ok().json("requires_totp_setup"),
+            Ok(v) => match &v {
+                LoginState::LoggedIn => HttpResponse::Accepted().json(v),
+                LoginState::NotLoggedIn => HttpResponse::Forbidden().json(v),
+                LoginState::Requires_TOTP => HttpResponse::Ok().json(v),
+                LoginState::Requires_TOTP_Setup(_) => HttpResponse::Ok().json(v),
+            },
             Err(e) => {
                 warn!("{}", e);
                 e.error_response()
@@ -141,7 +108,7 @@ pub fn login(
                     };
                     match val {
                         LoginState::LoggedIn => {
-                            Either::B(Either::A(ok(HttpResponse::BadRequest().json("logged_in"))))
+                            Either::B(Either::A(ok(HttpResponse::BadRequest().json(val))))
                         }
                         _ => Either::B(Either::B(login_core(session, data))),
                     }
@@ -161,10 +128,7 @@ pub fn output(item: web::Path<ServiceRequest>) -> impl Future<Item = HttpRespons
         .map_err(Error::from)
         .map(|response| match response {
             Ok(v) => HttpResponse::Ok().json(v),
-            Err(e) => {
-                warn!("{}", e);
-                HttpResponse::InternalServerError().finish()
-            }
+            Err(e) => e.error_response(),
         })
 }
 
@@ -174,9 +138,6 @@ pub fn services() -> impl Future<Item = HttpResponse, Error = Error> {
         .map_err(Error::from)
         .map(|response| match response {
             Ok(v) => HttpResponse::Ok().json(v),
-            Err(e) => {
-                warn!("{}", e);
-                HttpResponse::InternalServerError().finish()
-            }
+            Err(e) => e.error_response(),
         })
 }

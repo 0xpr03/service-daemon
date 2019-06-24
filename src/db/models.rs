@@ -9,7 +9,7 @@ pub struct FullUser {
     pub email: String,
     // to be used
     pub verified: bool,
-    pub totp_secret: TOTP,
+    pub totp: TOTP,
     /// TOTP setup complete
     pub totp_complete: bool,
 }

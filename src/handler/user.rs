@@ -89,7 +89,7 @@ impl Handler<StartupCheck> for UserService {
 
         if create_root {
             // TODO: use chacha20 once rand is compatible again with rand_chacha
-            let mut rng = rand::thread_rng();
+            let mut rng = thread_rng();
             let password: String = iter::repeat(())
                 .map(|()| rng.sample(Alphanumeric))
                 .take(ROOT_PASSWORD_LENGTH)
@@ -139,7 +139,7 @@ impl Handler<LoginUser> for UserService {
                         id: uid,
                     }),
                 )?;
-                Ok(LoginState::Requires_TOTP_Setup)
+                Ok(LoginState::Requires_TOTP_Setup(user.totp))
             }
         } else {
             DB.set_login(&msg.session, None)?;
@@ -157,7 +157,9 @@ impl Handler<CheckSession> for UserService {
             Some(v) => match v.state {
                 DBLoginState::Complete => LoginState::LoggedIn,
                 DBLoginState::Missing_2FA => LoginState::Requires_TOTP,
-                DBLoginState::Requires_2FA_Setup => LoginState::Requires_TOTP_Setup,
+                DBLoginState::Requires_2FA_Setup => {
+                    LoginState::Requires_TOTP_Setup(DB.get_user(v.id)?.totp)
+                }
             },
             None => LoginState::NotLoggedIn,
         })

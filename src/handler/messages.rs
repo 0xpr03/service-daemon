@@ -1,5 +1,4 @@
 use super::error::*;
-use super::service::ControllerError;
 use crate::handler::user;
 use crate::settings::Service;
 use crate::web::models::*;

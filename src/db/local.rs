@@ -156,7 +156,7 @@ impl DB {
             name: new_user.name,
             password: crypto::bcrypt_password(&new_user.password)
                 .map_err(|e| DBError::EncryptioNError(e))?,
-            totp_secret: crypto::totp_gen_secret(),
+            totp: crypto::totp_gen_secret(),
             totp_complete: false,
         };
         self.open_tree(tree::USER)?.set(ser!(id), ser!(user))?;

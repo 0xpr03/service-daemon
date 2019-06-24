@@ -1,3 +1,4 @@
+use crate::db::models::TOTP;
 use serde::{Deserialize, Serialize};
 
 pub type UID = i32;
@@ -30,7 +31,7 @@ pub enum LoginState {
     /// totp-login required
     Requires_TOTP,
     /// totp-setup required
-    Requires_TOTP_Setup,
+    Requires_TOTP_Setup(TOTP),
 }
 
 #[derive(Debug, Deserialize)]

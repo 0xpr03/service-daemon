@@ -1,3 +1,4 @@
+use super::error::ControllerError;
 use crate::messages::*;
 use crate::settings::Service;
 
@@ -6,37 +7,16 @@ use actix::spawn;
 use arraydeque::{ArrayDeque, Wrapping};
 use failure::Fallible;
 use metrohash::MetroHashMap;
-use tokio_codec::{Encoder, FramedWrite};
 use tokio_io::io::write_all;
-use tokio_process::{Child, ChildStdin, CommandExt};
+use tokio_process::CommandExt;
 
-use futures::sync::mpsc::TrySendError;
 use futures::{self, Future, Stream};
 
 use std::io;
-use std::io::Write;
 use std::process::{Command, Stdio};
 use std::sync::atomic::Ordering;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::{Arc, RwLock};
-
-#[derive(Fail, Debug)]
-pub enum ControllerError {
-    #[fail(display = "Failed to load services from data, services already loaded!")]
-    ServicesNotEmpty,
-    #[fail(display = "Invalid instance ID: {}", _0)]
-    InvalidInstance(usize),
-    #[fail(display = "Unable to start, IO error: {}", _0)]
-    StartupIOError(::std::io::Error),
-    #[fail(display = "Service is stopped!")]
-    ServiceStopped,
-    #[fail(display = "Unable to execute, missing service handles! This is an bug!")]
-    NoServiceHandle,
-    #[fail(display = "Service already running!")]
-    ServiceRunning,
-    #[fail(display = "Pipe to process is broken! This is an bug!")]
-    BrokenPipe,
-}
 
 pub struct ServiceController {
     services: MetroHashMap<usize, LoadedService>,
