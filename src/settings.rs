@@ -57,6 +57,7 @@ mod tests {
     use toml;
 
     #[test]
+    #[ignore]
     fn test_new() {
         let settings = Settings::new().unwrap();
         assert_eq!(0, settings.services.len());
