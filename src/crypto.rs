@@ -30,7 +30,13 @@ pub fn totp_encode_secret(secret: &[u8]) -> String {
 
 /// Calculate TOTP answer based on secret
 pub fn totp_calculate(totp: &TOTP) -> u64 {
-    totp_raw_now(&totp.secret, totp.digits, 0, TOTP_TIME_WINDOW, &totp.mode.into())
+    totp_raw_now(
+        &totp.secret,
+        totp.digits,
+        0,
+        TOTP_TIME_WINDOW,
+        &totp.mode.as_HashType(),
+    )
 }
 
 pub fn bcrypt_password(password: &str, cost: u32) -> BcryptResult<String> {

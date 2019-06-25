@@ -111,7 +111,7 @@ impl DB {
     /// target_db is the DB to check against
     fn gen_user_id_secure(&self) -> Result<UID> {
         let max = 100;
-        for i in 0..max {
+        for _ in 0..max {
             let id = self.gen_user_id()?;
             if self.is_valid_uid(&id)? {
                 warn!("Generated user ID exists already! {}", id);

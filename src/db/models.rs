@@ -33,10 +33,17 @@ pub enum TOTP_Mode {
 #[allow(non_snake_case)]
 impl Into<oath::HashType> for TOTP_Mode {
     fn into(self) -> oath::HashType {
+        self.as_HashType()
+    }
+}
+
+#[allow(non_snake_case)]
+impl TOTP_Mode {
+    pub fn as_HashType(&self) -> oath::HashType {
         match self {
-            SHA1 => oath::HashType::SHA1,
-            SHA256 => oath::HashType::SHA256,
-            SHA512 => oath::HashType::SHA512,
+            TOTP_Mode::SHA1 => oath::HashType::SHA1,
+            TOTP_Mode::SHA256 => oath::HashType::SHA256,
+            TOTP_Mode::SHA512 => oath::HashType::SHA512,
         }
     }
 }
@@ -60,11 +67,10 @@ pub struct ActiveLogin {
     pub last_updated: std::time::SystemTime,
 }
 
+/// Login state stored internally, doesn't have "not logged in"
 #[derive(Debug, Serialize, Deserialize)]
 pub enum LoginState {
     Missing2Fa,
     Complete,
     Requires2FaSetup,
 }
-
-pub type SessionPrivateKey = Vec<u8>;

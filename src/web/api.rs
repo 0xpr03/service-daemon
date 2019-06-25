@@ -78,8 +78,8 @@ fn login_core(session: String, data: Login) -> impl Future<Item = HttpResponse, 
             Ok(v) => match &v {
                 LoginState::LoggedIn => HttpResponse::Accepted().json(v),
                 LoginState::NotLoggedIn => HttpResponse::Forbidden().json(v),
-                LoginState::Requires_TOTP => HttpResponse::Ok().json(v),
-                LoginState::Requires_TOTP_Setup(_) => HttpResponse::Ok().json(v),
+                LoginState::RequiresTOTP => HttpResponse::Ok().json(v),
+                LoginState::RequiresTOTPSetup(_) => HttpResponse::Ok().json(v),
             },
             Err(e) => {
                 warn!("{}", e);
@@ -88,7 +88,10 @@ fn login_core(session: String, data: Login) -> impl Future<Item = HttpResponse, 
         })
 }
 
-pub fn totp(data: web::Json<TOTPValue>, id: Identity) -> impl Future<Item = HttpResponse, Error = Error> {
+pub fn totp(
+    data: web::Json<TOTPValue>,
+    id: Identity,
+) -> impl Future<Item = HttpResponse, Error = Error> {
     let data = data.into_inner();
     if let Some(session) = id.identity() {
         Either::A(
@@ -106,8 +109,8 @@ pub fn totp(data: web::Json<TOTPValue>, id: Identity) -> impl Future<Item = Http
                     ok(match &v {
                         LoginState::LoggedIn => HttpResponse::Accepted().json(v),
                         LoginState::NotLoggedIn => HttpResponse::Forbidden().json(v),
-                        LoginState::Requires_TOTP => HttpResponse::Ok().json(v),
-                        LoginState::Requires_TOTP_Setup(_) => HttpResponse::Ok().json(v),
+                        LoginState::RequiresTOTP => HttpResponse::Ok().json(v),
+                        LoginState::RequiresTOTPSetup(_) => HttpResponse::Ok().json(v),
                     })
                 }),
         )

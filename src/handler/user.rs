@@ -9,7 +9,6 @@ use crate::db::{
 };
 use crate::web::models::{CreateUserState, LoginState, NewUser, NewUserEncrypted, UID};
 use actix::prelude::*;
-use metrohash::MetroHashMap;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use std::iter;
@@ -36,7 +35,7 @@ pub struct UserService {
 }
 
 impl UserService {
-    fn cleanup_sessions(&mut self, context: &mut Context<Self>) {
+    fn cleanup_sessions(&mut self, _context: &mut Context<Self>) {
         trace!("TODO: Cleanup user sessions");
     }
     fn has_permission(&self, uid: UID, perm: &String) -> Result<bool, UserError> {
@@ -75,9 +74,7 @@ impl UserService {
 
 impl Default for UserService {
     fn default() -> Self {
-        Self {
-            brcypt_cost: 12,
-        }
+        Self { brcypt_cost: 12 }
     }
 }
 
@@ -137,20 +134,21 @@ impl Handler<LoginTOTP> for UserService {
     type Result = Result<LoginState, UserError>;
 
     fn handle(&mut self, msg: LoginTOTP, _ctx: &mut Context<Self>) -> Self::Result {
-        let login = match DB.get_login(&msg.session)? {
+        let mut login = match DB.get_login(&msg.session)? {
             Some(v) => v,
             None => return Ok(LoginState::NotLoggedIn),
         };
         let user = DB.get_user(login.id)?;
         let expected_totp = totp_calculate(&user.totp);
         if expected_totp == msg.totp {
-            // TODO: login
-
+            login.state = db::models::LoginState::Complete;
+            login.last_updated = SystemTime::now();
+            DB.set_login(&msg.session, Some(login))?;
             Ok(LoginState::LoggedIn)
         } else {
             Ok(match user.totp_complete {
-                true => LoginState::Requires_TOTP,
-                false => LoginState::Requires_TOTP_Setup(user.totp.into()),
+                true => LoginState::RequiresTOTP,
+                false => LoginState::RequiresTOTPSetup(user.totp.into()),
             })
         }
     }
@@ -160,7 +158,7 @@ impl Handler<LoginUser> for UserService {
     type Result = Result<LoginState, UserError>;
 
     fn handle(&mut self, msg: LoginUser, _ctx: &mut Context<Self>) -> Self::Result {
-        DB.set_login(&msg.session,None)?;
+        DB.set_login(&msg.session, None)?;
         let uid = match DB.get_id_by_email(&msg.email)? {
             Some(v) => v,
             None => return Ok(LoginState::NotLoggedIn),
@@ -171,15 +169,18 @@ impl Handler<LoginUser> for UserService {
                 true => db::models::LoginState::Missing2Fa,
                 false => db::models::LoginState::Requires2FaSetup,
             };
-            DB.set_login(&msg.session,Some(ActiveLogin {
-                state,
-                id: uid,
-                last_updated: SystemTime::now(),
-            }))?;
+            DB.set_login(
+                &msg.session,
+                Some(ActiveLogin {
+                    state,
+                    id: uid,
+                    last_updated: SystemTime::now(),
+                }),
+            )?;
             if user.totp_complete {
-                Ok(LoginState::Requires_TOTP)
+                Ok(LoginState::RequiresTOTP)
             } else {
-                Ok(LoginState::Requires_TOTP_Setup(user.totp.into()))
+                Ok(LoginState::RequiresTOTPSetup(user.totp.into()))
             }
         } else {
             DB.set_login(&msg.session, None)?;
@@ -196,9 +197,9 @@ impl Handler<CheckSession> for UserService {
         Ok(match DB.get_login(&msg.session)? {
             Some(v) => match v.state {
                 DBLoginState::Complete => LoginState::LoggedIn,
-                DBLoginState::Missing_2FA => LoginState::Requires_TOTP,
-                DBLoginState::Requires_2FA_Setup => {
-                    LoginState::Requires_TOTP_Setup(DB.get_user(v.id)?.totp.into())
+                DBLoginState::Missing2Fa => LoginState::RequiresTOTP,
+                DBLoginState::Requires2FaSetup => {
+                    LoginState::RequiresTOTPSetup(DB.get_user(v.id)?.totp.into())
                 }
             },
             None => LoginState::NotLoggedIn,
@@ -212,7 +213,7 @@ impl Handler<LogoutUser> for UserService {
     fn handle(&mut self, msg: LogoutUser, _ctx: &mut Context<Self>) -> Self::Result {
         DB.set_login(&msg.session, None)?;
 
-        warn!("Not handling websocket DC!");
+        warn!("Not handling websocket!");
         //TODO: kick from websocket
         Ok(())
     }

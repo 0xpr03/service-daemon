@@ -38,6 +38,7 @@ impl<A> Lines<A> {
     ///
     /// Note that this may lose data already read into internal buffers. It's
     /// recommended to only call this once the stream has reached its end.
+    #[allow(unused)]
     pub fn into_inner(self) -> A {
         self.io
     }

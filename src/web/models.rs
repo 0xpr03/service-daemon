@@ -48,6 +48,7 @@ pub struct MinUser {
     pub email: String,
 }
 
+/// Login state sent via API
 #[derive(Debug, Serialize)]
 pub enum LoginState {
     /// Success
@@ -55,9 +56,9 @@ pub enum LoginState {
     /// Invalid credentials
     NotLoggedIn,
     /// totp-login required
-    Requires_TOTP,
+    RequiresTOTP,
     /// totp-setup required
-    Requires_TOTP_Setup(TOTP),
+    RequiresTOTPSetup(TOTP),
 }
 
 #[derive(Debug, Deserialize)]

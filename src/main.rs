@@ -12,7 +12,6 @@ use crate::handler::user::UserService;
 use actix;
 use actix::prelude::*;
 use failure::Fallible;
-use rand::Rng;
 
 mod crypto;
 mod db;
