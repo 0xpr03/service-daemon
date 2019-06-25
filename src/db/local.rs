@@ -2,6 +2,7 @@ use super::models::*;
 use super::Result;
 use crate::crypto;
 use bincode::{deserialize, serialize};
+use std::time::SystemTime;
 
 use failure;
 use sled::*;
@@ -56,15 +57,22 @@ lazy_static! {
 }
 
 mod tree {
+    /// UID<->FullUser
     pub const USER: &'static str = "USER";
+    /// email String<->UID
     pub const REL_MAIL_UID: &'static str = "REL_MAIL_UID";
+    /// Specific see meta
     pub const META: &'static str = "META";
+    /// UID<->Vec<String>
     pub const PERMISSION: &'static str = "PERMISSIONS";
+    /// session String<->UID
     pub const LOGINS: &'static str = "LOGINS";
+    /// session String<->u64 time
     pub const REL_LOGIN_SEEN: &'static str = "REL_LOGIN_SEEN";
 }
 
 mod meta {
+    /// UID - atomic counter for unique UID generation
     pub const USER_AUTO_ID: &'static str = "USER_AUTO_ID";
 }
 
@@ -212,7 +220,7 @@ impl super::DBInterface for DB {
             None => Vec::new(),
         })
     }
-    fn update_user_permission(&self, id: UID, perms: Vec<String>) -> Result<()> {
+    fn update_user_permission(&self, id: UID, perms: &[String]) -> Result<()> {
         self.open_tree(tree::PERMISSION)?
             .set(ser!(id), ser!(perms))?;
         Ok(())
@@ -245,6 +253,20 @@ impl super::DBInterface for DB {
         Ok(())
     }
 
+    fn delete_old_logins(&self, max_age: u32) -> Result<usize> {
+        let mut deleted = 0;
+        let tree = self.open_tree(tree::REL_LOGIN_SEEN)?;
+        for val in tree.iter() {
+            let (session,time) = val?;
+            let time: u64 = deserialize(&time)?;
+            if time - super::get_current_time() > max_age as u64 {
+                tree.del(session)?;
+                deleted += 1;
+            }
+        }
+        Ok(deleted)
+    }
+
     fn update_user(&self, user: FullUser) -> Result<()> {
         let old_email = self.get_user(user.id)?.email;
         self.open_tree(tree::USER)?.set(ser!(user.id), ser!(user))?;
@@ -261,6 +283,14 @@ impl super::DBInterface for DB {
         };
         self.open_tree(tree::REL_MAIL_UID)?.del(ser!(user.email))?;
         self.open_tree(tree::PERMISSION)?.del(ser!(id))?;
+        let sessions = self.open_tree(tree::LOGINS)?;
+        for val in sessions.iter() {
+            let (key,val) = val?;
+            let al: ActiveLogin = deserialize(&val)?;
+            if al.id == id {
+                sessions.del(key)?;
+            }
+        }
         Ok(())
     }
 

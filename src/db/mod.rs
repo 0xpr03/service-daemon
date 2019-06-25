@@ -18,8 +18,6 @@ pub enum Error {
     InternalError(DBError),
     #[fail(display = "The specified user id {} is invalid!", _0)]
     InvalidUser(UID),
-    #[fail(display = "The specified name {} is invalid!", _0)]
-    InvalidName(String),
     #[fail(display = "User mail {} exists already!", _0)]
     EMailExists(String),
 }
@@ -38,20 +36,31 @@ fn get_current_time() -> u64 {
 }
 
 pub trait DBInterface {
+    /// Create new User
     fn create_user(&self, user: NewUserEncrypted) -> Result<FullUser>;
+    /// Delete user & active logins
     fn delete_user(&self, id: UID) -> Result<()>;
+    /// Get user by UID
     fn get_user(&self, id: UID) -> Result<FullUser>;
+    /// Get UID by email
     fn get_id_by_email(&self, email: &str) -> Result<Option<UID>>;
+    /// Update user settings
     fn update_user(&self, user: FullUser) -> Result<()>;
+    /// Get all users in min representation
     fn get_users(&self) -> Result<Vec<MinUser>>;
+    /// Get permissions of a user
     fn get_user_permissions(&self, id: UID) -> Result<Vec<String>>;
-    fn update_user_permission(&self, id: UID, perms: Vec<String>) -> Result<()>;
+    /// Update permissions of a user
+    fn update_user_permission(&self, id: UID, perms: &[String]) -> Result<()>;
     /// Get session login
     fn get_login(&self, session: &str) -> Result<Option<ActiveLogin>>;
     /// Set session login
     fn set_login(&self, session: &str, state: Option<ActiveLogin>) -> Result<()>;
     /// Update session login timestamp
     fn update_login(&self, session: &str) -> Result<()>;
+    /// Delete logins older than max_age
+    fn delete_old_logins(&self, max_age: u32) -> Result<usize>;
+    /// Get (reserved) root UID
     fn get_root_id(&self) -> UID;
 }
 

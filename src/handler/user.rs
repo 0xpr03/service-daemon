@@ -12,7 +12,6 @@ use actix::prelude::*;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use std::iter;
-use std::time::SystemTime;
 
 const ROOT_NAME: &'static str = "Root";
 const ROOT_EMAIL: &'static str = "root@localhost";
@@ -32,11 +31,15 @@ lazy_static! {
 /// Service for handling user related things
 pub struct UserService {
     brcypt_cost: u32,
+    login_max_age: u32,
 }
 
 impl UserService {
     fn cleanup_sessions(&mut self, _context: &mut Context<Self>) {
-        trace!("TODO: Cleanup user sessions");
+        match DB.delete_old_logins(self.login_max_age) {
+            Ok(v) => debug!("Removed {} outdated logins.",v),
+            Err(e) => warn!("Unable to remove old logins: {}",e),
+        }
     }
     fn has_permission(&self, uid: UID, perm: &String) -> Result<bool, UserError> {
         // &String due to https://github.com/rust-lang/rust/issues/42671
@@ -74,7 +77,7 @@ impl UserService {
 
 impl Default for UserService {
     fn default() -> Self {
-        Self { brcypt_cost: 12 }
+        Self { brcypt_cost: 12, login_max_age: 3600 }
     }
 }
 
@@ -142,7 +145,6 @@ impl Handler<LoginTOTP> for UserService {
         let expected_totp = totp_calculate(&user.totp);
         if expected_totp == msg.totp {
             login.state = db::models::LoginState::Complete;
-            login.last_updated = SystemTime::now();
             DB.set_login(&msg.session, Some(login))?;
             Ok(LoginState::LoggedIn)
         } else {
@@ -174,7 +176,6 @@ impl Handler<LoginUser> for UserService {
                 Some(ActiveLogin {
                     state,
                     id: uid,
-                    last_updated: SystemTime::now(),
                 }),
             )?;
             if user.totp_complete {
@@ -260,7 +261,7 @@ impl Handler<EditUser> for UserService {
             if !self.has_permission(msg.invoker, &PERM_ROOT)? {
                 return Ok(false);
             }
-            DB.update_user_permission(msg.user_uid, perm)?;
+            DB.update_user_permission(msg.user_uid, &perm)?;
         } else {
             let mut user = DB.get_user(msg.user_uid)?;
             match msg.data {

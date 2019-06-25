@@ -64,7 +64,6 @@ pub type UserPermissions = Vec<String>;
 pub struct ActiveLogin {
     pub id: UID,
     pub state: LoginState,
-    pub last_updated: std::time::SystemTime,
 }
 
 /// Login state stored internally, doesn't have "not logged in"

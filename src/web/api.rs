@@ -60,10 +60,24 @@ pub fn stop(item: web::Path<ServiceRequest>) -> impl Future<Item = HttpResponse,
         })
 }
 
-pub fn logout(id: Identity) -> HttpResponse {
-    trace!("Logout..");
-    id.forget();
-    HttpResponse::Ok().json("logout")
+pub fn logout(id: Identity) -> impl Future<Item = HttpResponse, Error = Error> {
+    if let Some(session) = id.identity() {
+        id.forget();
+        Either::A(UserService::from_registry()
+            .send(LogoutUser {
+                session
+            })
+            .map_err(Error::from)
+            .map(|resp| match resp {
+                Ok(_) => HttpResponse::Accepted().json(true),
+                Err(e) => {
+                    warn!("Logout: {}",e);
+                    e.error_response()
+                }
+            }))
+    } else {
+        Either::B(ok(HttpResponse::BadRequest().json("invalid session")))
+    }
 }
 
 fn login_core(session: String, data: Login) -> impl Future<Item = HttpResponse, Error = Error> {
@@ -82,7 +96,7 @@ fn login_core(session: String, data: Login) -> impl Future<Item = HttpResponse, 
                 LoginState::RequiresTOTPSetup(_) => HttpResponse::Ok().json(v),
             },
             Err(e) => {
-                warn!("{}", e);
+                warn!("Login-core: {}", e);
                 e.error_response()
             }
         })

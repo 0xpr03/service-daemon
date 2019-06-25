@@ -28,7 +28,7 @@ pub fn start(domain: String, max_age_secs: i64) -> std::io::Result<Server> {
             .service(
                 web::scope("/api")
                     .data(web::JsonConfig::default().limit(4096))
-                    .service(web::resource("/logout").route(web::get().to(api::logout)))
+                    .service(web::resource("/logout").route(web::get().to_async(api::logout)))
                     .service(web::resource("/login").route(web::post().to_async(api::login)))
                     .service(web::resource("/totp").route(web::post().to_async(api::totp)))
                     .service(
