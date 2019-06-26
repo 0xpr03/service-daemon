@@ -79,4 +79,6 @@ macro_rules! assert_unique_feature {
     }
 }
 
-assert_unique_feature!("mysql", "sled");
+assert_unique_feature!("local", "remote");
+#[cfg(not(any(feature = "local", feature = "remote")))]
+compile_error!("Either feature \"local\" or \"remote\" must be enabled for this crate.");
