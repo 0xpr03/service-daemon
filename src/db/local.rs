@@ -257,9 +257,9 @@ impl super::DBInterface for DB {
         let mut deleted = 0;
         let tree = self.open_tree(tree::REL_LOGIN_SEEN)?;
         for val in tree.iter() {
-            let (session,time) = val?;
+            let (session, time) = val?;
             let time: u64 = deserialize(&time)?;
-            if time - super::get_current_time() > max_age as u64 {
+            if super::get_current_time() - time > max_age as u64 {
                 tree.del(session)?;
                 deleted += 1;
             }
@@ -285,7 +285,7 @@ impl super::DBInterface for DB {
         self.open_tree(tree::PERMISSION)?.del(ser!(id))?;
         let sessions = self.open_tree(tree::LOGINS)?;
         for val in sessions.iter() {
-            let (key,val) = val?;
+            let (key, val) = val?;
             let al: ActiveLogin = deserialize(&val)?;
             if al.id == id {
                 sessions.del(key)?;

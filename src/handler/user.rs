@@ -37,8 +37,8 @@ pub struct UserService {
 impl UserService {
     fn cleanup_sessions(&mut self, _context: &mut Context<Self>) {
         match DB.delete_old_logins(self.login_max_age) {
-            Ok(v) => debug!("Removed {} outdated logins.",v),
-            Err(e) => warn!("Unable to remove old logins: {}",e),
+            Ok(v) => debug!("Removed {} outdated logins.", v),
+            Err(e) => warn!("Unable to remove old logins: {}", e),
         }
     }
     fn has_permission(&self, uid: UID, perm: &String) -> Result<bool, UserError> {
@@ -77,7 +77,10 @@ impl UserService {
 
 impl Default for UserService {
     fn default() -> Self {
-        Self { brcypt_cost: 12, login_max_age: 3600 }
+        Self {
+            brcypt_cost: 12,
+            login_max_age: 3600,
+        }
     }
 }
 
@@ -141,11 +144,15 @@ impl Handler<LoginTOTP> for UserService {
             Some(v) => v,
             None => return Ok(LoginState::NotLoggedIn),
         };
-        let user = DB.get_user(login.id)?;
+        let mut user = DB.get_user(login.id)?;
         let expected_totp = totp_calculate(&user.totp);
         if expected_totp == msg.totp {
             login.state = db::models::LoginState::Complete;
             DB.set_login(&msg.session, Some(login))?;
+            if !user.totp_complete {
+                user.totp_complete = true;
+                DB.update_user(user)?;
+            }
             Ok(LoginState::LoggedIn)
         } else {
             Ok(match user.totp_complete {
@@ -171,13 +178,7 @@ impl Handler<LoginUser> for UserService {
                 true => db::models::LoginState::Missing2Fa,
                 false => db::models::LoginState::Requires2FaSetup,
             };
-            DB.set_login(
-                &msg.session,
-                Some(ActiveLogin {
-                    state,
-                    id: uid,
-                }),
-            )?;
+            DB.set_login(&msg.session, Some(ActiveLogin { state, id: uid }))?;
             if user.totp_complete {
                 Ok(LoginState::RequiresTOTP)
             } else {

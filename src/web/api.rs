@@ -9,15 +9,21 @@ use futures::future::{err, ok, Either};
 use nanoid;
 
 pub fn index(item: web::Path<ServiceRequest>) -> impl Future<Item = HttpResponse, Error = Error> {
-    ServiceController::from_registry()
-        .send(GetOutput {
-            id: item.into_inner().service,
-        })
-        .map_err(Error::from)
-        .map(|response| match response {
-            Ok(v) => HttpResponse::Ok().body(v),
-            Err(e) => e.error_response(),
-        })
+    #[cfg(debug_assertions)]
+    {
+        // disable on release for now, remove eventually
+        ServiceController::from_registry()
+            .send(GetOutput {
+                id: item.into_inner().service,
+            })
+            .map_err(Error::from)
+            .map(|response| match response {
+                Ok(v) => HttpResponse::Ok().body(v),
+                Err(e) => e.error_response(),
+            })
+    }
+    #[cfg(not(debug_assertions))]
+    ok(HttpResponse::NotImplemented().finish())
 }
 
 pub fn input(
@@ -63,18 +69,18 @@ pub fn stop(item: web::Path<ServiceRequest>) -> impl Future<Item = HttpResponse,
 pub fn logout(id: Identity) -> impl Future<Item = HttpResponse, Error = Error> {
     if let Some(session) = id.identity() {
         id.forget();
-        Either::A(UserService::from_registry()
-            .send(LogoutUser {
-                session
-            })
-            .map_err(Error::from)
-            .map(|resp| match resp {
-                Ok(_) => HttpResponse::Accepted().json(true),
-                Err(e) => {
-                    warn!("Logout: {}",e);
-                    e.error_response()
-                }
-            }))
+        Either::A(
+            UserService::from_registry()
+                .send(LogoutUser { session })
+                .map_err(Error::from)
+                .map(|resp| match resp {
+                    Ok(_) => HttpResponse::Accepted().json(true),
+                    Err(e) => {
+                        warn!("Logout: {}", e);
+                        e.error_response()
+                    }
+                }),
+        )
     } else {
         Either::B(ok(HttpResponse::BadRequest().json("invalid session")))
     }
@@ -92,8 +98,8 @@ fn login_core(session: String, data: Login) -> impl Future<Item = HttpResponse, 
             Ok(v) => match &v {
                 LoginState::LoggedIn => HttpResponse::Accepted().json(v),
                 LoginState::NotLoggedIn => HttpResponse::Forbidden().json(v),
-                LoginState::RequiresTOTP => HttpResponse::Ok().json(v),
-                LoginState::RequiresTOTPSetup(_) => HttpResponse::Ok().json(v),
+                LoginState::RequiresTOTP => HttpResponse::Accepted().json(v),
+                LoginState::RequiresTOTPSetup(_) => HttpResponse::Accepted().json(v),
             },
             Err(e) => {
                 warn!("Login-core: {}", e);
