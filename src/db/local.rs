@@ -271,8 +271,10 @@ impl super::DBInterface for DB {
         let old_email = self.get_user(user.id)?.email;
         self.open_tree(tree::USER)?.set(ser!(user.id), ser!(user))?;
         let tree = self.open_tree(tree::REL_MAIL_UID)?;
-        tree.set(ser!(user.email), ser!(user.id))?;
-        tree.del(ser!(old_email))?;
+        if old_email != user.email {
+            tree.del(ser!(old_email))?;
+            tree.set(ser!(user.email), ser!(user.id))?;
+        }
         Ok(())
     }
 
