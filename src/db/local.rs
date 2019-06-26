@@ -226,9 +226,28 @@ impl super::DBInterface for DB {
         Ok(())
     }
 
-    fn get_login(&self, session: &str) -> Result<Option<ActiveLogin>> {
+    fn get_login(&self, session: &str, max_age: u32) -> Result<Option<ActiveLogin>> {
         Ok(match self.open_tree(tree::LOGINS)?.get(ser!(session))? {
-            Some(v) => Some(deserialize(&v)?),
+            Some(v) => {
+                let login = deserialize(&v)?;
+                let outdated = match self.open_tree(tree::REL_LOGIN_SEEN)?.get(ser!(session))? {
+                    Some(age_raw) => {
+                        let age: u64 = deserialize(&age_raw)?;
+                        super::get_current_time() - age > max_age as u64
+                    }
+                    None => {
+                        warn!("Found inconsisent login without time!");
+                        self.set_login(session, None)?;
+                        false
+                    }
+                };
+
+                if outdated {
+                    None
+                } else {
+                    Some(login)
+                }
+            }
             None => None,
         })
     }

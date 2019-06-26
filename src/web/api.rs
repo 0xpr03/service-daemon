@@ -108,15 +108,11 @@ fn login_core(session: String, data: Login) -> impl Future<Item = HttpResponse, 
         })
 }
 
-pub fn checklogin(
-    id: Identity,
-) -> impl Future<Item = HttpResponse, Error = Error> {
+pub fn checklogin(id: Identity) -> impl Future<Item = HttpResponse, Error = Error> {
     if let Some(session) = id.identity() {
         Either::A(
             UserService::from_registry()
-                .send(CheckSession {
-                    session,
-                })
+                .send(CheckSession { session })
                 .from_err()
                 .and_then(|resp| {
                     let v = match resp {

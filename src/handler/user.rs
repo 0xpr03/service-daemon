@@ -140,7 +140,7 @@ impl Handler<LoginTOTP> for UserService {
     type Result = Result<LoginState, UserError>;
 
     fn handle(&mut self, msg: LoginTOTP, _ctx: &mut Context<Self>) -> Self::Result {
-        let mut login = match DB.get_login(&msg.session)? {
+        let mut login = match DB.get_login(&msg.session, self.login_max_age)? {
             Some(v) => v,
             None => return Ok(LoginState::NotLoggedIn),
         };
@@ -196,7 +196,7 @@ impl Handler<CheckSession> for UserService {
 
     fn handle(&mut self, msg: CheckSession, _ctx: &mut Context<Self>) -> Self::Result {
         use db::models::LoginState as DBLoginState;
-        Ok(match DB.get_login(&msg.session)? {
+        Ok(match DB.get_login(&msg.session, self.login_max_age)? {
             Some(v) => match v.state {
                 DBLoginState::Complete => LoginState::LoggedIn,
                 DBLoginState::Missing2Fa => LoginState::RequiresTOTP,

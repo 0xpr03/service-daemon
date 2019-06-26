@@ -52,8 +52,8 @@ pub trait DBInterface {
     fn get_user_permissions(&self, id: UID) -> Result<Vec<String>>;
     /// Update permissions of a user
     fn update_user_permission(&self, id: UID, perms: &[String]) -> Result<()>;
-    /// Get session login
-    fn get_login(&self, session: &str) -> Result<Option<ActiveLogin>>;
+    /// Get session login if not older than max_age
+    fn get_login(&self, session: &str, max_age: u32) -> Result<Option<ActiveLogin>>;
     /// Set session login
     fn set_login(&self, session: &str, state: Option<ActiveLogin>) -> Result<()>;
     /// Update session login timestamp
