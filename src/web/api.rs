@@ -108,6 +108,29 @@ fn login_core(session: String, data: Login) -> impl Future<Item = HttpResponse, 
         })
 }
 
+pub fn checklogin(
+    id: Identity,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    if let Some(session) = id.identity() {
+        Either::A(
+            UserService::from_registry()
+                .send(CheckSession {
+                    session,
+                })
+                .from_err()
+                .and_then(|resp| {
+                    let v = match resp {
+                        Err(e) => return err(Error::from(e)),
+                        Ok(v) => v,
+                    };
+                    ok(HttpResponse::Ok().json(v))
+                }),
+        )
+    } else {
+        Either::B(ok(HttpResponse::Ok().json(LoginState::NotLoggedIn)))
+    }
+}
+
 pub fn totp(
     data: web::Json<TOTPValue>,
     id: Identity,
