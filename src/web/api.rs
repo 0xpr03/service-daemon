@@ -60,17 +60,21 @@ pub fn index(item: web::Path<ServiceRequest>) -> impl Future<Item = HttpResponse
 pub fn input(
     item: web::Path<ServiceRequest>,
     data: web::Json<String>,
+    id: Identity,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
-    ServiceController::from_registry()
-        .send(SendStdin {
-            id: item.into_inner().service,
-            input: data.into_inner(),
-        })
-        .map_err(Error::from)
-        .map(|response| match response {
-            Ok(()) => HttpResponse::Ok().finish(),
-            Err(e) => e.error_response(),
-        })
+    let service = item.into_inner().service;
+    check_perm!(id.identity(), service, ServicePerm::STOP, move || {
+        ServiceController::from_registry()
+            .send(SendStdin {
+                id: service,
+                input: data.into_inner(),
+            })
+            .map_err(Error::from)
+            .map(|response| match response {
+                Ok(()) => HttpResponse::Ok().finish(),
+                Err(e) => e.error_response(),
+            })
+    })
 }
 
 pub fn start(
@@ -228,19 +232,25 @@ pub fn login(
     }
 }
 
-pub fn output(item: web::Path<ServiceRequest>) -> impl Future<Item = HttpResponse, Error = Error> {
-    ServiceController::from_registry()
-        .send(GetOutput {
-            id: item.into_inner().service,
-        })
-        .map_err(Error::from)
-        .map(|response| match response {
-            Ok(v) => HttpResponse::Ok().json(v),
-            Err(e) => e.error_response(),
-        })
+pub fn output(
+    item: web::Path<ServiceRequest>,
+    id: Identity,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    let service = item.into_inner().service;
+    check_perm!(id.identity(), service, ServicePerm::STOP, move || {
+        ServiceController::from_registry()
+            .send(GetOutput { id: service })
+            .map_err(Error::from)
+            .map(|response| match response {
+                Ok(v) => HttpResponse::Ok().json(v),
+                Err(e) => e.error_response(),
+            })
+    })
 }
 
-pub fn services() -> impl Future<Item = HttpResponse, Error = Error> {
+pub fn services(id: Identity) -> impl Future<Item = HttpResponse, Error = Error> {
+    // let service = item.into_inner().service;
+    // check_perm!(id.identity(), service, ServicePerm::STOP, move || {
     ServiceController::from_registry()
         .send(GetServices {})
         .map_err(Error::from)
@@ -248,4 +258,5 @@ pub fn services() -> impl Future<Item = HttpResponse, Error = Error> {
             Ok(v) => HttpResponse::Ok().json(v),
             Err(e) => e.error_response(),
         })
+    // })
 }

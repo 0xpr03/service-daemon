@@ -1,4 +1,4 @@
-pub use crate::web::models::{MinUser, NewUserEncrypted};
+pub use crate::web::models::{MinUser};
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +7,17 @@ pub type UID = i32;
 /// Permission ID
 pub type SID = u32;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+/// new type to make sure NewUser isn't passed with a raw password that easy
+#[derive(Debug)]
+#[cfg_attr(test, derive(Clone,PartialEq))]
+pub struct NewUserEnc {
+    pub name: String,
+    pub password_enc: String,
+    pub email: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Clone,PartialEq))]
 pub struct FullUser {
     pub name: String,
     pub id: UID,
@@ -20,7 +30,8 @@ pub struct FullUser {
     pub totp_complete: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Clone,PartialEq))]
 pub struct TOTP {
     pub secret: Vec<u8>,
     pub mode: TOTP_Mode,
@@ -28,7 +39,8 @@ pub struct TOTP {
 }
 
 /// Wrapper for oath::HashType due to missing serde
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Clone, PartialEq))]
 #[allow(non_camel_case_types)]
 pub enum TOTP_Mode {
     SHA1 = 0,
@@ -65,6 +77,7 @@ impl From<oath::HashType> for TOTP_Mode {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[cfg_attr(test, derive(Clone, PartialEq))]
 pub struct ManagementPerm {
     pub admin: bool,
 }
@@ -103,6 +116,7 @@ impl Default for ServicePerm {
 pub type StdinCommands = Vec<String>;
 
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Clone, PartialEq))]
 pub struct ActiveLogin {
     pub id: UID,
     pub state: LoginState,
@@ -110,6 +124,7 @@ pub struct ActiveLogin {
 
 /// Login state stored internally, doesn't have "not logged in"
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(Clone))]
 pub enum LoginState {
     Missing2Fa,
     Complete,

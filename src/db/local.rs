@@ -94,7 +94,7 @@ impl Default for DB {
 type WTree = Arc<Tree>;
 
 impl DB {
-    /// Generate Service-Perm ID
+    /// Generate serialized Service-Perm ID
     #[inline]
     fn service_perm_key(uid: UID, sid: SID) -> Vec<u8> {
         serialize(&(uid, sid)).unwrap()
@@ -149,7 +149,7 @@ impl DB {
             .contains_key(ser!(mail))?)
     }
     /// Inner function to simulate transaction
-    fn create_user_inner(&self, new_user: NewUserEncrypted, id: UID) -> Result<FullUser> {
+    fn create_user_inner(&self, new_user: NewUserEnc, id: UID) -> Result<FullUser> {
         let user = FullUser {
             id,
             email: new_user.email,
@@ -179,7 +179,7 @@ impl super::DBInterface for DB {
         MIN_UID
     }
 
-    fn create_user(&self, new_user: NewUserEncrypted) -> Result<FullUser> {
+    fn create_user(&self, new_user: NewUserEnc) -> Result<FullUser> {
         let mail_ser = ser!(new_user.email);
         let claimed = self
             .open_tree(tree::REL_MAIL_UID)?
@@ -243,8 +243,7 @@ impl super::DBInterface for DB {
         if new_perms.is_empty() {
             tree.del(&key)?;
         } else {
-            self.open_tree(tree::PERMISSION_SERVICE)?
-                .set(ser!(id), ser!(new_perms))?;
+            tree.set(&key, ser!(new_perms))?;
         }
         Ok(())
     }
@@ -322,6 +321,9 @@ impl super::DBInterface for DB {
     }
 
     fn update_user(&self, user: FullUser) -> Result<()> {
+        if !self.is_valid_uid(&user.id)? {
+            return Err(super::Error::InvalidUser(user.id).into()); 
+        }
         let old_email = self.get_user(user.id)?.email;
         self.open_tree(tree::USER)?.set(ser!(user.id), ser!(user))?;
         let tree = self.open_tree(tree::REL_MAIL_UID)?;

@@ -4,10 +4,10 @@ use super::error::UserError;
 use crate::crypto::*;
 use crate::db;
 use crate::db::{
-    models::{ActiveLogin, FullUser, ServicePerm},
+    models::*,
     DBInterface, DB,
 };
-use crate::web::models::{CreateUserState, LoginState, NewUser, NewUserEncrypted, UID};
+use crate::web::models::{CreateUserState, LoginState, NewUser, UID};
 use actix::prelude::*;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
@@ -42,7 +42,7 @@ impl UserService {
         }
     }
     fn create_user_unchecked(&self, user: NewUser) -> Result<CreateUserState, UserError> {
-        let user_enc = NewUserEncrypted {
+        let user_enc = NewUserEnc {
             email: user.email,
             name: user.name,
             password_enc: bcrypt_password(&user.password, self.brcypt_cost)?,
@@ -97,6 +97,9 @@ impl Handler<StartupCheck> for UserService {
                 CreateUserState::Success(uid) => {
                     assert_eq!(uid, DB.get_root_id());
                     let end = start.elapsed().as_millis();
+
+                    DB.set_perm_man(uid, &ManagementPerm { admin: true })?;
+
                     if end > 2_000 {
                         warn!(
                             "Took {} ms to encrypt password using current configuration!",

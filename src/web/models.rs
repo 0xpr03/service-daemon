@@ -15,14 +15,6 @@ pub struct NewUser {
     pub email: String,
 }
 
-/// new type to make sure NewUser isn't passed with a raw password
-#[derive(Debug, Clone)]
-pub struct NewUserEncrypted {
-    pub name: String,
-    pub password_enc: String,
-    pub email: String,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TOTP {
     pub secret: String,
