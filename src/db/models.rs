@@ -7,7 +7,7 @@ pub type UID = i32;
 /// Permission ID
 pub type SID = u32;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FullUser {
     pub name: String,
     pub id: UID,
@@ -20,7 +20,7 @@ pub struct FullUser {
     pub totp_complete: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TOTP {
     pub secret: Vec<u8>,
     pub mode: TOTP_Mode,
@@ -28,7 +28,7 @@ pub struct TOTP {
 }
 
 /// Wrapper for oath::HashType due to missing serde
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[allow(non_camel_case_types)]
 pub enum TOTP_Mode {
     SHA1 = 0,
@@ -64,8 +64,15 @@ impl From<oath::HashType> for TOTP_Mode {
     }
 }
 
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ManagementPerm {
     pub admin: bool,
+}
+
+impl Default for ManagementPerm {
+    fn default() -> Self {
+        Self { admin: false }
+    }
 }
 
 bitflags! {

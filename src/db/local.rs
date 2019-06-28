@@ -167,6 +167,14 @@ impl DB {
 }
 
 impl super::DBInterface for DB {
+    fn new_temp() -> Self {
+        let config = ConfigBuilder::default().temporary(true);
+
+        Self {
+            db: Db::start(config.build()).unwrap(),
+        }
+    }
+
     fn get_root_id(&self) -> UID {
         MIN_UID
     }
@@ -229,23 +237,28 @@ impl super::DBInterface for DB {
             None => ServicePerm::default(),
         })
     }
-    fn set_perm_service(&self, id: UID, service: SID, newPerms: ServicePerm) -> Result<()> {
+    fn set_perm_service(&self, id: UID, service: SID, new_perms: ServicePerm) -> Result<()> {
         let tree = self.open_tree(tree::PERMISSION_SERVICE)?;
         let key = DB::service_perm_key(id, service);
-        if newPerms.is_empty() {
+        if new_perms.is_empty() {
             tree.del(&key)?;
         } else {
             self.open_tree(tree::PERMISSION_SERVICE)?
-                .set(ser!(id), ser!(newPerms))?;
+                .set(ser!(id), ser!(new_perms))?;
         }
         Ok(())
     }
 
     fn get_perm_man(&self, id: UID) -> Result<ManagementPerm> {
-        unimplemented!()
+        match self.open_tree(tree::PERMISSION_MANAGEMENT)?.get(ser!(id))? {
+            Some(v) => Ok(deserialize(&v)?),
+            None => Ok(ManagementPerm::default()),
+        }
     }
     fn set_perm_man(&self, id: UID, perm: &ManagementPerm) -> Result<()> {
-        unimplemented!()
+        self.open_tree(tree::PERMISSION_MANAGEMENT)?
+            .set(ser!(id), ser!(perm))?;
+        Ok(())
     }
 
     fn get_login(&self, session: &str, max_age: u32) -> Result<Option<ActiveLogin>> {
