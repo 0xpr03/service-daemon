@@ -24,6 +24,8 @@ pub struct UserService {
     login_max_age: u32,
 }
 
+type Result<T> = ::std::result::Result<T, UserError>;
+
 impl UserService {
     fn cleanup_sessions(&mut self, _context: &mut Context<Self>) {
         match DB.delete_old_logins(self.login_max_age) {
@@ -31,17 +33,17 @@ impl UserService {
             Err(e) => warn!("Unable to remove old logins: {}", e),
         }
     }
-    fn is_admin(&self, user: UID) -> Result<bool, UserError> {
+    fn is_admin(&self, user: UID) -> Result<bool> {
         Ok(DB.get_perm_man(user)?.admin)
     }
-    fn get_root_user(&self) -> Result<Option<FullUser>, UserError> {
+    fn get_root_user(&self) -> Result<Option<FullUser>> {
         match DB.get_user(DB.get_root_id()) {
             Ok(user) => Ok(Some(user)),
             Err(db::Error::InvalidUser(_)) => Ok(None),
             Err(e) => Err(e.into()),
         }
     }
-    fn create_user_unchecked(&self, user: NewUser) -> Result<CreateUserState, UserError> {
+    fn create_user_unchecked(&self, user: NewUser) -> Result<CreateUserState> {
         let user_enc = NewUserEnc {
             email: user.email,
             name: user.name,
@@ -70,9 +72,9 @@ impl Default for UserService {
 }
 
 impl Handler<StartupCheck> for UserService {
-    type Result = Result<(), UserError>;
+    type Result = Result<()>;
 
-    fn handle(&mut self, _msg: StartupCheck, _ctx: &mut Context<Self>) -> Result<(), UserError> {
+    fn handle(&mut self, _msg: StartupCheck, _ctx: &mut Context<Self>) -> Result<()> {
         let user = self.get_root_user()?;
         let create_root = user.is_none();
         if let Some(user) = user {
@@ -125,7 +127,7 @@ impl Handler<StartupCheck> for UserService {
 }
 
 impl Handler<LoginTOTP> for UserService {
-    type Result = Result<LoginState, UserError>;
+    type Result = Result<LoginState>;
 
     fn handle(&mut self, msg: LoginTOTP, _ctx: &mut Context<Self>) -> Self::Result {
         let mut login = match DB.get_login(&msg.session, self.login_max_age)? {
@@ -152,7 +154,7 @@ impl Handler<LoginTOTP> for UserService {
 }
 
 impl Handler<LoginUser> for UserService {
-    type Result = Result<LoginState, UserError>;
+    type Result = Result<LoginState>;
 
     fn handle(&mut self, msg: LoginUser, _ctx: &mut Context<Self>) -> Self::Result {
         DB.set_login(&msg.session, None)?;
@@ -180,7 +182,7 @@ impl Handler<LoginUser> for UserService {
 }
 
 impl Handler<CheckSession> for UserService {
-    type Result = Result<LoginState, UserError>;
+    type Result = Result<LoginState>;
 
     fn handle(&mut self, msg: CheckSession, _ctx: &mut Context<Self>) -> Self::Result {
         use db::models::LoginState as DBLoginState;
@@ -198,7 +200,7 @@ impl Handler<CheckSession> for UserService {
 }
 
 impl Handler<GetServicePerm> for UserService {
-    type Result = Result<ServicePerm, UserError>;
+    type Result = Result<ServicePerm>;
 
     fn handle(&mut self, msg: GetServicePerm, _ctx: &mut Context<Self>) -> Self::Result {
         let uid = match DB.get_login(&msg.session, self.login_max_age)? {
@@ -216,7 +218,7 @@ impl Handler<GetServicePerm> for UserService {
 }
 
 impl Handler<LogoutUser> for UserService {
-    type Result = Result<(), UserError>;
+    type Result = Result<()>;
 
     fn handle(&mut self, msg: LogoutUser, _ctx: &mut Context<Self>) -> Self::Result {
         DB.set_login(&msg.session, None)?;
@@ -228,7 +230,7 @@ impl Handler<LogoutUser> for UserService {
 }
 
 impl Handler<CreateUser> for UserService {
-    type Result = Result<CreateUserState, UserError>;
+    type Result = Result<CreateUserState>;
 
     fn handle(&mut self, msg: CreateUser, _ctx: &mut Context<Self>) -> Self::Result {
         if !self.is_admin(msg.invoker)? {
@@ -247,7 +249,7 @@ impl Handler<SetPasswordCost> for UserService {
 }
 
 impl Handler<EditUser> for UserService {
-    type Result = Result<bool, UserError>;
+    type Result = Result<bool>;
 
     fn handle(&mut self, msg: EditUser, _ctx: &mut Context<Self>) -> Self::Result {
         if msg.invoker != msg.user_uid {
