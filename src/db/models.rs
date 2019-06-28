@@ -1,5 +1,11 @@
-pub use crate::web::models::{MinUser, NewUserEncrypted, UID};
+pub use crate::web::models::{MinUser, NewUserEncrypted};
+use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
+
+/// User ID
+pub type UID = i32;
+/// Permission ID
+pub type SID = u32;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FullUser {
@@ -58,7 +64,36 @@ impl From<oath::HashType> for TOTP_Mode {
     }
 }
 
-pub type UserPermissions = Vec<String>;
+pub struct ManagementPerm {
+    pub admin: bool,
+}
+
+bitflags! {
+    #[derive(Serialize, Deserialize)]
+    pub struct ServicePerm: u32 {
+        /// Start service
+        const START = 0b00000001;
+        /// Stop service
+        const STOP  = 0b00000010;
+        /// Stdin write all
+        const STDIN_ALL = 0b00000100;
+        /// Stdin write specific commands
+        const STDIN = 0b00001000;
+        /// Stdout inspect
+        const STDOUT = 0b00010000;
+        /// Stderr inspect
+        const STDERR = 0b00100000;
+    }
+}
+
+impl Default for ServicePerm {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
+/// Specific commands a user can use
+pub type StdinCommands = Vec<String>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ActiveLogin {
@@ -67,7 +102,7 @@ pub struct ActiveLogin {
 }
 
 /// Login state stored internally, doesn't have "not logged in"
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum LoginState {
     Missing2Fa,
     Complete,

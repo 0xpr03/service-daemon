@@ -63,8 +63,10 @@ mod tree {
     pub const REL_MAIL_UID: &'static str = "REL_MAIL_UID";
     /// Specific see meta
     pub const META: &'static str = "META";
-    /// UID<->Vec<String>
-    pub const PERMISSION: &'static str = "PERMISSIONS";
+    /// "UID_SID"<->ServicePerm
+    pub const PERMISSION_SERVICE: &'static str = "PERMISSIONS_SERVICE";
+    /// "UID"<->ManPerm
+    pub const PERMISSION_MANAGEMENT: &'static str = "PERMISSIONS_MANAGEMENT";
     /// session String<->UID
     pub const LOGINS: &'static str = "LOGINS";
     /// session String<->u64 time
@@ -92,6 +94,11 @@ impl Default for DB {
 type WTree = Arc<Tree>;
 
 impl DB {
+    /// Generate Service-Perm ID
+    #[inline]
+    fn service_perm_key(uid: UID, sid: SID) -> Vec<u8> {
+        serialize(&(uid, sid)).unwrap()
+    }
     /// Open tree with wrapped error
     fn open_tree(&self, tree: &'static str) -> Result<WTree> {
         Ok(self
@@ -213,17 +220,32 @@ impl super::DBInterface for DB {
         Ok(users)
     }
 
-    fn get_user_permissions(&self, id: UID) -> Result<Vec<String>> {
-        let v = self.open_tree(tree::PERMISSION)?.get(ser!(id))?;
+    fn get_perm_service(&self, id: UID, service: SID) -> Result<ServicePerm> {
+        let v = self
+            .open_tree(tree::PERMISSION_SERVICE)?
+            .get(&DB::service_perm_key(id, service))?;
         Ok(match v {
             Some(v) => deserialize(&v)?,
-            None => Vec::new(),
+            None => ServicePerm::default(),
         })
     }
-    fn update_user_permission(&self, id: UID, perms: &[String]) -> Result<()> {
-        self.open_tree(tree::PERMISSION)?
-            .set(ser!(id), ser!(perms))?;
+    fn set_perm_service(&self, id: UID, service: SID, newPerms: ServicePerm) -> Result<()> {
+        let tree = self.open_tree(tree::PERMISSION_SERVICE)?;
+        let key = DB::service_perm_key(id, service);
+        if newPerms.is_empty() {
+            tree.del(&key)?;
+        } else {
+            self.open_tree(tree::PERMISSION_SERVICE)?
+                .set(ser!(id), ser!(newPerms))?;
+        }
         Ok(())
+    }
+
+    fn get_perm_man(&self, id: UID) -> Result<ManagementPerm> {
+        unimplemented!()
+    }
+    fn set_perm_man(&self, id: UID, perm: &ManagementPerm) -> Result<()> {
+        unimplemented!()
     }
 
     fn get_login(&self, session: &str, max_age: u32) -> Result<Option<ActiveLogin>> {
@@ -303,7 +325,7 @@ impl super::DBInterface for DB {
             None => return Err(super::Error::InvalidUser(id).into()),
         };
         self.open_tree(tree::REL_MAIL_UID)?.del(ser!(user.email))?;
-        self.open_tree(tree::PERMISSION)?.del(ser!(id))?;
+        self.open_tree(tree::PERMISSION_SERVICE)?.del(ser!(id))?;
         let sessions = self.open_tree(tree::LOGINS)?;
         for val in sessions.iter() {
             let (key, val) = val?;

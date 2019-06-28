@@ -1,12 +1,11 @@
 use crate::crypto;
 use crate::db::models as dbmodels;
+pub use crate::db::models::{SID, UID};
 use serde::{Deserialize, Serialize};
-
-pub type UID = i32;
 
 #[derive(Debug, Deserialize)]
 pub struct ServiceRequest {
-    pub service: usize,
+    pub service: SID,
 }
 
 #[derive(Debug, Deserialize)]

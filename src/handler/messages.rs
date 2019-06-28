@@ -1,4 +1,5 @@
 use super::error::*;
+use crate::db::models::ServicePerm;
 use crate::settings::Service;
 use crate::web::models::*;
 use actix::prelude::*;
@@ -6,7 +7,7 @@ use serde::Serialize;
 
 #[derive(Message)]
 pub struct ServiceStateChanged {
-    pub id: usize,
+    pub id: SID,
     pub running: bool,
 }
 
@@ -25,7 +26,7 @@ pub struct SetPasswordCost {
 }
 
 pub struct StartService {
-    pub id: usize,
+    pub id: SID,
 }
 
 impl Message for StartService {
@@ -33,7 +34,7 @@ impl Message for StartService {
 }
 
 pub struct StopService {
-    pub id: usize,
+    pub id: SID,
 }
 
 impl Message for StopService {
@@ -41,7 +42,7 @@ impl Message for StopService {
 }
 
 pub struct GetOutput {
-    pub id: usize,
+    pub id: SID,
 }
 
 impl Message for GetOutput {
@@ -55,7 +56,7 @@ impl Message for GetServices {
 }
 
 pub struct SendStdin {
-    pub id: usize,
+    pub id: SID,
     pub input: String,
 }
 
@@ -65,7 +66,7 @@ impl Message for SendStdin {
 
 #[derive(Serialize)]
 pub struct ServiceMin {
-    pub id: usize,
+    pub id: SID,
     pub name: String,
     pub running: bool,
 }
@@ -114,6 +115,15 @@ impl Message for CreateUser {
     type Result = Result<CreateUserState, UserError>;
 }
 
+/// Get permissions of session for service
+/// Returns error if no valid session is found
+#[derive(Message)]
+#[rtype(result = "Result<ServicePerm, UserError>")]
+pub struct GetServicePerm {
+    pub session: String,
+    pub service: SID,
+}
+
 pub struct EditUser {
     pub invoker: UID,
     pub user_uid: UID,
@@ -128,7 +138,7 @@ impl Message for EditUser {
 pub enum EditUserData {
     Name(String),
     Mail(String),
-    Permission(Vec<String>),
+    ServicePermission((SID, ServicePerm)),
     Password(String),
     // TOTP(String),
 }

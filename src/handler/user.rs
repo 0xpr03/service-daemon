@@ -4,7 +4,7 @@ use super::error::UserError;
 use crate::crypto::*;
 use crate::db;
 use crate::db::{
-    models::{ActiveLogin, FullUser},
+    models::{ActiveLogin, FullUser, ServicePerm},
     DBInterface, DB,
 };
 use crate::web::models::{CreateUserState, LoginState, NewUser, NewUserEncrypted, UID};
@@ -17,16 +17,6 @@ const ROOT_NAME: &'static str = "Root";
 const ROOT_EMAIL: &'static str = "root@localhost";
 const ROOT_PASSWORD_LENGTH: usize = 20;
 const CLEANUP_INTERVAL: u64 = 60 * 20; // seconds
-
-lazy_static! {
-    static ref PERM_ROOT: String = String::from("ROOT");
-    static ref PERM_CREATE_USER: String = String::from("CREATE_USERS");
-    static ref PERM_DELETE_USER: String = String::from("DELETE_USERS");
-    static ref PERM_EDIT_TOTP: String = String::from("EDIT_USERS_TOTP");
-    static ref PERM_EDIT_NAME: String = String::from("EDIT_USERS_NAME");
-    static ref PERM_EDIT_EMAIL: String = String::from("EDIT_USERS_EMAIL");
-    static ref PERM_EDIT_PASSWORD: String = String::from("EDIT_USERS_PASSWORD");
-}
 
 /// Service for handling user related things
 pub struct UserService {
@@ -41,13 +31,8 @@ impl UserService {
             Err(e) => warn!("Unable to remove old logins: {}", e),
         }
     }
-    fn has_permission(&self, uid: UID, perm: &String) -> Result<bool, UserError> {
-        // &String due to https://github.com/rust-lang/rust/issues/42671
-        let perms = DB.get_user_permissions(uid)?;
-        if perms.contains(perm) {
-            return Ok(true);
-        }
-        Ok(perms.contains(&PERM_ROOT))
+    fn is_admin(&self, user: UID) -> Result<bool, UserError> {
+        Ok(DB.get_perm_man(user)?.admin)
     }
     fn get_root_user(&self) -> Result<Option<FullUser>, UserError> {
         match DB.get_user(DB.get_root_id()) {
@@ -209,6 +194,24 @@ impl Handler<CheckSession> for UserService {
     }
 }
 
+impl Handler<GetServicePerm> for UserService {
+    type Result = Result<ServicePerm, UserError>;
+
+    fn handle(&mut self, msg: GetServicePerm, _ctx: &mut Context<Self>) -> Self::Result {
+        let uid = match DB.get_login(&msg.session, self.login_max_age)? {
+            Some(v) => {
+                use db::models::LoginState as DBLoginState;
+                if v.state != DBLoginState::Complete {
+                    return Err(UserError::InvalidPermissions);
+                }
+                v.id
+            }
+            None => return Err(UserError::InvalidSession),
+        };
+        Ok(DB.get_perm_service(uid, msg.service)?)
+    }
+}
+
 impl Handler<LogoutUser> for UserService {
     type Result = Result<(), UserError>;
 
@@ -225,7 +228,7 @@ impl Handler<CreateUser> for UserService {
     type Result = Result<CreateUserState, UserError>;
 
     fn handle(&mut self, msg: CreateUser, _ctx: &mut Context<Self>) -> Self::Result {
-        if !self.has_permission(msg.invoker, &PERM_CREATE_USER)? {
+        if !self.is_admin(msg.invoker)? {
             return Err(UserError::InvalidPermissions);
         }
         self.create_user_unchecked(msg.user)
@@ -245,24 +248,12 @@ impl Handler<EditUser> for UserService {
 
     fn handle(&mut self, msg: EditUser, _ctx: &mut Context<Self>) -> Self::Result {
         if msg.invoker != msg.user_uid {
-            let required = match msg.data {
-                EditUserData::Name(_) => self.has_permission(msg.invoker, &PERM_EDIT_NAME)?,
-                EditUserData::Password(_) => {
-                    self.has_permission(msg.invoker, &PERM_EDIT_PASSWORD)?
-                }
-                EditUserData::Permission(_) => self.has_permission(msg.invoker, &PERM_ROOT)?,
-                // EditUserData::TOTP(_) => self.has_permission(msg.invoker, &PERM_EDIT_TOTP)?,
-                EditUserData::Mail(_) => self.has_permission(msg.invoker, &PERM_EDIT_EMAIL)?,
-            };
-            if !required {
+            if !self.is_admin(msg.invoker)? {
                 return Ok(false);
             }
         }
-        if let EditUserData::Permission(perm) = msg.data {
-            if !self.has_permission(msg.invoker, &PERM_ROOT)? {
-                return Ok(false);
-            }
-            DB.update_user_permission(msg.user_uid, &perm)?;
+        if let EditUserData::ServicePermission((service, perm)) = msg.data {
+            DB.set_perm_service(msg.user_uid, service, perm)?;
         } else {
             let mut user = DB.get_user(msg.user_uid)?;
             match msg.data {
@@ -272,7 +263,7 @@ impl Handler<EditUser> for UserService {
                     user.password = bcrypt_password(&pw, self.brcypt_cost)?
                 }
                 // EditUserData::TOTP(secret) => user.totp_secret = secret,
-                EditUserData::Permission(_) => unreachable!(),
+                EditUserData::ServicePermission(_) => unreachable!(),
             }
             DB.update_user(user)?;
         }

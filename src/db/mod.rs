@@ -48,10 +48,14 @@ pub trait DBInterface {
     fn update_user(&self, user: FullUser) -> Result<()>;
     /// Get all users in min representation
     fn get_users(&self) -> Result<Vec<MinUser>>;
-    /// Get permissions of a user
-    fn get_user_permissions(&self, id: UID) -> Result<Vec<String>>;
-    /// Update permissions of a user
-    fn update_user_permission(&self, id: UID, perms: &[String]) -> Result<()>;
+    /// Get user permissions for management
+    fn get_perm_man(&self, id: UID) -> Result<ManagementPerm>;
+    /// Set user permissions for management
+    fn set_perm_man(&self, id: UID, perm: &ManagementPerm) -> Result<()>;
+    /// Get user permissions for a service
+    fn get_perm_service(&self, id: UID, service: SID) -> Result<ServicePerm>;
+    /// Update user permissions for service
+    fn set_perm_service(&self, id: UID, service: SID, newPerms: ServicePerm) -> Result<()>;
     /// Get session login if not older than max_age
     fn get_login(&self, session: &str, max_age: u32) -> Result<Option<ActiveLogin>>;
     /// Set session login

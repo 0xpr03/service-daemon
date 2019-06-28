@@ -1,4 +1,5 @@
 use crate::db;
+use crate::web::models::SID;
 use actix_web::{error::ResponseError, HttpResponse};
 use bcrypt::BcryptError;
 
@@ -12,12 +13,15 @@ pub enum UserError {
     InvalidPermissions,
     #[fail(display = "Special internal error: {}", _0)]
     InternalError(String),
+    #[fail(display = "Invalid session for operation")]
+    InvalidSession,
 }
 
 impl ResponseError for UserError {
     fn error_response(&self) -> HttpResponse {
         match self {
-            UserError::InvalidPermissions => HttpResponse::Unauthorized().json("Unauthorized"),
+            UserError::InvalidPermissions => HttpResponse::Unauthorized().json("unauthorized"),
+            UserError::InvalidSession => HttpResponse::Unauthorized().json("invalid_session"),
             _ => {
                 HttpResponse::InternalServerError().json("Internal Server Error, Please try later")
             }
@@ -41,7 +45,7 @@ pub enum ControllerError {
     #[fail(display = "Failed to load services from data, services already loaded!")]
     ServicesNotEmpty,
     #[fail(display = "Invalid instance ID: {}", _0)]
-    InvalidInstance(usize),
+    InvalidInstance(SID),
     #[fail(display = "Unable to start, IO error: {}", _0)]
     StartupIOError(::std::io::Error),
     #[fail(display = "Service is stopped!")]

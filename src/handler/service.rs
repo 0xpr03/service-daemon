@@ -1,6 +1,7 @@
 use super::error::ControllerError;
 use crate::messages::*;
 use crate::settings::Service;
+use crate::web::models::SID;
 
 use actix::prelude::*;
 use actix::spawn;
@@ -19,7 +20,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::{Arc, RwLock};
 
 pub struct ServiceController {
-    services: MetroHashMap<usize, LoadedService>,
+    services: MetroHashMap<SID, LoadedService>,
 }
 
 impl Default for ServiceController {

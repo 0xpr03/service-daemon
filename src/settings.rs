@@ -1,3 +1,4 @@
+use crate::db::models::SID;
 use config::{Config, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
 
@@ -29,7 +30,7 @@ pub struct Database {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Service {
-    pub id: usize,
+    pub id: SID,
     pub name: String,
     pub restart: bool,
     pub autostart: bool,

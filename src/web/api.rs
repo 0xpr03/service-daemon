@@ -1,3 +1,5 @@
+use crate::db::models::ServicePerm;
+use crate::handler::error::UserError;
 use crate::handler::service::ServiceController;
 use crate::handler::user::UserService;
 use crate::messages::*;
@@ -7,6 +9,35 @@ use actix_identity::*;
 use actix_web::{error::ResponseError, web, Error, HttpResponse};
 use futures::future::{err, ok, Either};
 use nanoid;
+
+macro_rules! check_perm {
+    ($session:expr,$service:expr,$perm:expr,$cmd:expr) => {
+        if let Some(session) = $session {
+            Either::A(
+                UserService::from_registry()
+                    .send(GetServicePerm {
+                        service: $service,
+                        session: session,
+                    })
+                    .map_err(Error::from)
+                    .and_then(move |res| match res {
+                        Ok(perms) => {
+                            if perms.contains(ServicePerm::STOP) {
+                                Either::A($cmd())
+                            } else {
+                                Either::B(Either::A(ok(
+                                    HttpResponse::Unauthorized().json("no perms")
+                                )))
+                            }
+                        }
+                        Err(e) => Either::B(Either::B(ok(e.error_response()))),
+                    }),
+            )
+        } else {
+            Either::B(ok(UserError::InvalidSession.error_response()))
+        }
+    };
+}
 
 pub fn index(item: web::Path<ServiceRequest>) -> impl Future<Item = HttpResponse, Error = Error> {
     #[cfg(debug_assertions)]
@@ -42,28 +73,36 @@ pub fn input(
         })
 }
 
-pub fn start(item: web::Path<ServiceRequest>) -> impl Future<Item = HttpResponse, Error = Error> {
-    ServiceController::from_registry()
-        .send(StartService {
-            id: item.into_inner().service,
-        })
-        .map_err(Error::from)
-        .map(|response| match response {
-            Ok(()) => HttpResponse::Ok().finish(),
-            Err(e) => e.error_response(),
-        })
+pub fn start(
+    item: web::Path<ServiceRequest>,
+    id: Identity,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    let service = item.into_inner().service;
+    check_perm!(id.identity(), service, ServicePerm::START, move || {
+        ServiceController::from_registry()
+            .send(StartService { id: service })
+            .map_err(Error::from)
+            .map(|response| match response {
+                Ok(()) => HttpResponse::Ok().finish(),
+                Err(e) => e.error_response(),
+            })
+    })
 }
 
-pub fn stop(item: web::Path<ServiceRequest>) -> impl Future<Item = HttpResponse, Error = Error> {
-    ServiceController::from_registry()
-        .send(StopService {
-            id: item.into_inner().service,
-        })
-        .map_err(Error::from)
-        .map(|response| match response {
-            Ok(()) => HttpResponse::Ok().finish(),
-            Err(e) => e.error_response(),
-        })
+pub fn stop(
+    item: web::Path<ServiceRequest>,
+    id: Identity,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    let service = item.into_inner().service;
+    check_perm!(id.identity(), service, ServicePerm::STOP, move || {
+        ServiceController::from_registry()
+            .send(StopService { id: service })
+            .map_err(Error::from)
+            .map(|response| match response {
+                Ok(()) => HttpResponse::Ok().finish(),
+                Err(e) => e.error_response(),
+            })
+    })
 }
 
 pub fn logout(id: Identity) -> impl Future<Item = HttpResponse, Error = Error> {
