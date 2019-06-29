@@ -1,6 +1,21 @@
 use crate::db::models::SID;
 use config::{Config, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+
+#[derive(Fail, Debug)]
+pub enum SettingsError {
+    #[fail(display = "Parsing error {}", _0)]
+    ParsingError(ConfigError),
+    #[fail(display = "The service id '{}' is used multiple times!", _0)]
+    IDReuse(SID),
+}
+
+impl From<ConfigError> for SettingsError {
+    fn from(error: ConfigError) -> Self {
+        SettingsError::ParsingError(error)
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Settings {
@@ -42,13 +57,32 @@ pub struct Service {
 }
 
 impl Settings {
-    pub fn new() -> Result<Self, ConfigError> {
+    pub fn new() -> Result<Self, SettingsError> {
+        Self::new_opt(None)
+    }
+    pub fn new_opt(file: Option<&str>) -> Result<Self, SettingsError> {
         let mut s = Config::new();
+        if let Some(f) = file {
+            s.merge(File::with_name(f))?;
+        } else {
         s.merge(File::with_name("config/default"))?;
         s.merge(Environment::with_prefix("sc"))?;
+        }
         let mut config: Self = s.try_into()?;
+        
+        config.validate()?;
+        
         config.services.retain(|s| s.enabled);
         Ok(config)
+    }
+    fn validate(&self) -> Result<(), SettingsError> {
+        let mut ids = HashSet::new();
+        for service in self.services.iter() {
+            if ids.insert(service.id) {
+                return Err(SettingsError::IDReuse(service.id));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -56,6 +90,14 @@ impl Settings {
 mod tests {
     use super::*;
     use toml;
+
+    #[test]
+    fn test_id_reuse() {
+        match Settings::new_opt(Some("tests/double_id.toml")) {
+            Err(SettingsError::IDReuse(id)) => assert_eq!(1,id),
+            v => panic!("Expected IDReuse error got {:?}",v),
+        }
+    }
 
     #[test]
     #[ignore]
