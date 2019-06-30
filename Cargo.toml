@@ -25,7 +25,7 @@ nanoid = "0.2"
 config = "0.9"
 data-encoding = "2"
 oath = "0.10"
-bcrypt = "0.4"
+bcrypt = "0.5"
 mysql = {version = "16", optional = true }
 sled = {version = "0.24", optional = true }
 bincode = {version = "1", optional = true }
@@ -42,7 +42,7 @@ arraydeque = "0.4"
 futures = "0.1"
 lazy_static = "1"
 sysexit = "0.2"
-rand = "0.6"
+rand = "0.7"
 bitflags = "1"
 
 [dev-dependencies]
