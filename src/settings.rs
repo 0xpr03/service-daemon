@@ -65,20 +65,20 @@ impl Settings {
         if let Some(f) = file {
             s.merge(File::with_name(f))?;
         } else {
-        s.merge(File::with_name("config/default"))?;
-        s.merge(Environment::with_prefix("sc"))?;
+            s.merge(File::with_name("config/default"))?;
+            s.merge(Environment::with_prefix("sc"))?;
         }
         let mut config: Self = s.try_into()?;
-        
+
         config.validate()?;
-        
+
         config.services.retain(|s| s.enabled);
         Ok(config)
     }
     fn validate(&self) -> Result<(), SettingsError> {
         let mut ids = HashSet::new();
         for service in self.services.iter() {
-            if ids.insert(service.id) {
+            if !ids.insert(service.id) {
                 return Err(SettingsError::IDReuse(service.id));
             }
         }
@@ -93,9 +93,11 @@ mod tests {
 
     #[test]
     fn test_id_reuse() {
+        assert!(Settings::new_opt(Some("tests/double_id.valid.toml")).is_ok());
+
         match Settings::new_opt(Some("tests/double_id.toml")) {
-            Err(SettingsError::IDReuse(id)) => assert_eq!(1,id),
-            v => panic!("Expected IDReuse error got {:?}",v),
+            Err(SettingsError::IDReuse(id)) => assert_eq!(1, id),
+            v => panic!("Expected IDReuse error got {:?}", v),
         }
     }
 

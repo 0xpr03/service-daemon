@@ -1,0 +1,46 @@
+# not yet implemented, would only be for remote DB
+# currently using local DB
+#[database]
+#url = "root@localhost/test"
+#password = "12345"
+
+[security]
+password_min_length = 10
+# Costs for bcrypt password verification
+# Decreasing the value removes
+bcrypt_cost = 10
+
+[web]
+domain = "localhost"
+# 1 day 60*60*24
+max_session_age_secs = 86400
+
+[[services]]
+id = 0
+enabled = true
+name = "foo"
+autostart = false
+command = "/bin/cat"
+directory = "/"
+args = ["foo"]
+restart = false
+
+[[services]]
+id = 1
+enabled = true
+name = "bar"
+autostart = false
+command = "false"
+directory = "/bin/false"
+args = []
+restart = false
+
+[[services]]
+id = 2
+enabled = true
+name = "bas"
+autostart = false
+command = "true"
+directory = "/"
+args = []
+restart = false
