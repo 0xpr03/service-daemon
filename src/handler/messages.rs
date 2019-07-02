@@ -49,11 +49,11 @@ impl Message for GetOutput {
     type Result = Result<String, ControllerError>;
 }
 
-pub struct GetServices {}
-
-impl Message for GetServices {
-    type Result = Result<Vec<ServiceMin>, ControllerError>;
+impl Message for GetServiceIDs {
+    type Result = Result<Vec<SID>, ControllerError>;
 }
+
+pub struct GetServiceIDs {}
 
 pub struct SendStdin {
     pub id: SID,
@@ -72,7 +72,7 @@ pub struct ServiceMin {
 }
 
 pub struct CheckSession {
-    pub session: String,
+    pub session: Session,
 }
 
 impl Message for CheckSession {
@@ -82,7 +82,7 @@ impl Message for CheckSession {
 pub struct LoginUser {
     pub email: String,
     pub password: String,
-    pub session: String,
+    pub session: Session,
 }
 
 impl Message for LoginUser {
@@ -90,7 +90,7 @@ impl Message for LoginUser {
 }
 
 pub struct LoginTOTP {
-    pub session: String,
+    pub session: Session,
     pub totp: u64,
 }
 
@@ -99,7 +99,7 @@ impl Message for LoginTOTP {
 }
 
 pub struct LogoutUser {
-    pub session: String,
+    pub session: Session,
 }
 
 impl Message for LogoutUser {
@@ -115,13 +115,25 @@ impl Message for CreateUser {
     type Result = Result<CreateUserState, UserError>;
 }
 
+#[derive(Message)]
+#[rtype(result = "Result<Vec<SID>, UserError>")]
+pub struct GetUserServiceIDs {
+    pub session: Session,
+}
+
 /// Get permissions of session for service
 /// Returns error if no valid session is found
 #[derive(Message)]
 #[rtype(result = "Result<ServicePerm, UserError>")]
 pub struct GetServicePerm {
-    pub session: String,
+    pub session: Session,
     pub service: SID,
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<Vec<ServiceMin>, ControllerError>")]
+pub struct GetUserServices {
+    pub session: Session,
 }
 
 pub struct EditUser {

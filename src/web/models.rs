@@ -1,6 +1,6 @@
 use crate::crypto;
 use crate::db::models as dbmodels;
-pub use crate::db::models::{SID, UID};
+pub use crate::db::models::{Session, SID, UID};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]

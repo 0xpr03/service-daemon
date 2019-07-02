@@ -199,6 +199,21 @@ impl Handler<CheckSession> for UserService {
     }
 }
 
+impl Handler<GetUserServiceIDs> for UserService {
+    type Result = Result<Vec<SID>>;
+
+    fn handle(&mut self, msg: GetUserServiceIDs, _ctx: &mut Context<Self>) -> Self::Result {
+        match DB.get_login(&msg.session, self.login_max_age)? {
+            Some(v) => Ok(DB
+                .get_all_perm_service(v.id)?
+                .into_iter()
+                .map(|(k, v)| k)
+                .collect()),
+            None => Err(UserError::InvalidSession),
+        }
+    }
+}
+
 impl Handler<GetServicePerm> for UserService {
     type Result = Result<ServicePerm>;
 

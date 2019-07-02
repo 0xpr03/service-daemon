@@ -237,6 +237,21 @@ impl super::DBInterface for DB {
             None => ServicePerm::default(),
         })
     }
+
+    fn get_all_perm_service(&self, id: UID) -> Result<HashMap<SID, ServicePerm>> {
+        let v = self.open_tree(tree::PERMISSION_SERVICE)?;
+        let start = (id, 0);
+        let end = (id + 1, 0);
+        let iter = v.range(ser!(start)..ser!(end));
+        Ok(iter
+            .map(|v| {
+                let (key, value) = v?;
+                let (_, sid) = DB::service_perm_key_reverse(&key)?;
+                Ok((sid, deserialize::<ServicePerm>(&value)?))
+            })
+            .collect::<Result<HashMap<SID, ServicePerm>>>()?)
+    }
+
     fn set_perm_service(&self, id: UID, service: SID, new_perms: ServicePerm) -> Result<()> {
         let tree = self.open_tree(tree::PERMISSION_SERVICE)?;
         let key = DB::service_perm_key(id, service);
@@ -371,5 +386,37 @@ impl super::DBInterface for DB {
             }
         }
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    type Pair = (i32, i32);
+    #[test]
+    fn test_range_service_perm() {
+        let config = ConfigBuilder::default().temporary(true);
+
+        let db = Db::start(config.build()).unwrap();
+        const A_END: i32 = 100;
+        const B_END: i32 = 20;
+        for a in 0..A_END {
+            for b in 0..B_END {
+                db.set(ser!((a, b)), ser!(format!("{}-{}", a, b))).unwrap();
+            }
+        }
+
+        let a: i32 = 22;
+        let b_start = 5;
+        let start: Pair = (a, b_start);
+        let end: Pair = (a + 1, 0);
+        let mut iter = db.range(ser!(start)..ser!(end));
+        for r in b_start..B_END {
+            let (key, val) = iter.next().unwrap().unwrap();
+            assert_eq!((a, r), deserialize::<Pair>(&key).unwrap());
+            assert_eq!(format!("{}-{}", a, r), deserialize::<String>(&val).unwrap());
+        }
+        assert!(iter.next().is_none());
     }
 }

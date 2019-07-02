@@ -1,8 +1,10 @@
 use super::error::ControllerError;
+use crate::handler::user::UserService;
 use crate::messages::*;
 use crate::settings::Service;
 use crate::web::models::SID;
 
+use actix::fut::{err, ok, Either};
 use actix::prelude::*;
 use actix::spawn;
 use arraydeque::{ArrayDeque, Wrapping};
@@ -13,6 +15,7 @@ use tokio_process::CommandExt;
 
 use futures::{self, Future, Stream};
 
+use std::collections::HashSet;
 use std::io;
 use std::process::{Command, Stdio};
 use std::sync::atomic::Ordering;
@@ -183,19 +186,49 @@ impl Handler<GetOutput> for ServiceController {
     }
 }
 
-impl Handler<GetServices> for ServiceController {
-    type Result = Result<Vec<ServiceMin>, ControllerError>;
+impl Handler<GetServiceIDs> for ServiceController {
+    type Result = Result<Vec<SID>, ControllerError>;
 
-    fn handle(&mut self, _msg: GetServices, _ctx: &mut Context<Self>) -> Self::Result {
-        Ok(self
-            .services
-            .values()
-            .map(|v| ServiceMin {
-                id: v.model.id,
-                name: v.model.name.clone(),
-                running: v.running.load(Ordering::Relaxed),
+    fn handle(&mut self, _msg: GetServiceIDs, _ctx: &mut Context<Self>) -> Self::Result {
+        Ok(self.services.values().map(|v| v.model.id.clone()).collect())
+    }
+}
+
+impl Handler<GetUserServices> for ServiceController {
+    type Result = ResponseActFuture<Self, Vec<ServiceMin>, ControllerError>;
+    // kind of breaks separation of concerns, but to make this performant we'll have to call UserService from here
+    fn handle(&mut self, msg: GetUserServices, _ctx: &mut Context<Self>) -> Self::Result {
+        let fut = UserService::from_registry()
+            .send(GetUserServiceIDs {
+                session: msg.session,
             })
-            .collect())
+            .map_err(ControllerError::from);
+        let fut = actix::fut::wrap_future::<_, Self>(fut);
+        let fut = fut.and_then(|v, actor, _ctx| {
+            let v = match v.map_err(ControllerError::from) {
+                Err(e) => return Either::B(err(e)),
+                Ok(v) => v,
+            };
+            let mut services = HashSet::with_capacity(v.len());
+            services.extend(v);
+
+            Either::A(ok(actor
+                .services
+                .values()
+                .filter_map(|v| {
+                    if services.contains(&v.model.id) {
+                        Some(ServiceMin {
+                            id: v.model.id,
+                            name: v.model.name.clone(),
+                            running: v.running.load(Ordering::Relaxed),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect()))
+        });
+        Box::new(fut)
     }
 }
 

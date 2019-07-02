@@ -249,14 +249,18 @@ pub fn output(
 }
 
 pub fn services(id: Identity) -> impl Future<Item = HttpResponse, Error = Error> {
-    // let service = item.into_inner().service;
-    // check_perm!(id.identity(), service, ServicePerm::STOP, move || {
-    ServiceController::from_registry()
-        .send(GetServices {})
-        .map_err(Error::from)
-        .map(|response| match response {
-            Ok(v) => HttpResponse::Ok().json(v),
-            Err(e) => e.error_response(),
-        })
-    // })
+    // also checks login
+    if let Some(session) = id.identity() {
+        Either::A(
+            ServiceController::from_registry()
+                .send(GetUserServices { session })
+                .map_err(Error::from)
+                .map(|response| match response {
+                    Ok(v) => HttpResponse::Ok().json(v),
+                    Err(e) => e.error_response(),
+                }),
+        )
+    } else {
+        Either::B(ok(HttpResponse::BadRequest().json("invalid session")))
+    }
 }

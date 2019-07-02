@@ -56,6 +56,22 @@ pub enum ControllerError {
     ServiceRunning,
     #[fail(display = "Pipe to process is broken! This is an bug!")]
     BrokenPipe,
+    #[fail(display = "Error when accessing UserController {}", _0)]
+    UserError(#[cause] UserError),
+    #[fail(display = "Error when accessing resource: {}", _0)]
+    SendError(#[cause] MailboxError),
+}
+
+impl From<UserError> for ControllerError {
+    fn from(error: UserError) -> Self {
+        ControllerError::UserError(error)
+    }
+}
+
+impl From<MailboxError> for ControllerError {
+    fn from(error: MailboxError) -> Self {
+        ControllerError::SendError(error)
+    }
 }
 
 impl ResponseError for ControllerError {

@@ -1,4 +1,4 @@
-pub use crate::web::models::{MinUser};
+pub use crate::web::models::MinUser;
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
@@ -6,10 +6,12 @@ use serde::{Deserialize, Serialize};
 pub type UID = i32;
 /// Permission ID
 pub type SID = u32;
+/// User login session
+pub type Session = String;
 
 /// new type to make sure NewUser isn't passed with a raw password that easy
 #[derive(Debug)]
-#[cfg_attr(test, derive(Clone,PartialEq))]
+#[cfg_attr(test, derive(Clone, PartialEq))]
 pub struct NewUserEnc {
     pub name: String,
     pub password_enc: String,
@@ -17,7 +19,7 @@ pub struct NewUserEnc {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(Clone,PartialEq))]
+#[cfg_attr(test, derive(Clone, PartialEq))]
 pub struct FullUser {
     pub name: String,
     pub id: UID,
@@ -31,7 +33,7 @@ pub struct FullUser {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(Clone,PartialEq))]
+#[cfg_attr(test, derive(Clone, PartialEq))]
 pub struct TOTP {
     pub secret: Vec<u8>,
     pub mode: TOTP_Mode,
