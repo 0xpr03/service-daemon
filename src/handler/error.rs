@@ -1,7 +1,36 @@
 use crate::db;
 use crate::web::models::SID;
+use actix::MailboxError;
 use actix_web::{error::ResponseError, HttpResponse};
 use bcrypt::BcryptError;
+
+#[derive(Fail, Debug)]
+pub enum StartupError {
+    #[fail(display = "Error when accessing controller: {}", _0)]
+    ControllerError(#[cause] ControllerError),
+    #[fail(display = "Error when accessing UserController {}", _0)]
+    UserError(#[cause] UserError),
+    #[fail(display = "Error when accessing resource: {}", _0)]
+    SendError(#[cause] MailboxError),
+}
+
+impl From<ControllerError> for StartupError {
+    fn from(error: ControllerError) -> Self {
+        StartupError::ControllerError(error)
+    }
+}
+
+impl From<UserError> for StartupError {
+    fn from(error: UserError) -> Self {
+        StartupError::UserError(error)
+    }
+}
+
+impl From<MailboxError> for StartupError {
+    fn from(error: MailboxError) -> Self {
+        StartupError::SendError(error)
+    }
+}
 
 #[derive(Fail, Debug)]
 pub enum UserError {
@@ -15,6 +44,8 @@ pub enum UserError {
     InternalError(String),
     #[fail(display = "Invalid session for operation")]
     InvalidSession,
+    #[fail(display = "Error when accessing resource: {}", _0)]
+    SendError(#[cause] MailboxError),
 }
 
 impl ResponseError for UserError {
@@ -37,6 +68,12 @@ impl From<bcrypt::BcryptError> for UserError {
 impl From<db::Error> for UserError {
     fn from(error: db::Error) -> Self {
         UserError::DBError(error)
+    }
+}
+
+impl From<MailboxError> for UserError {
+    fn from(error: MailboxError) -> Self {
+        UserError::SendError(error)
     }
 }
 

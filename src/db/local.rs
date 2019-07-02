@@ -2,7 +2,7 @@ use super::models::*;
 use super::Result;
 use crate::crypto;
 use bincode::{deserialize, serialize};
-use std::time::SystemTime;
+use std::collections::HashMap;
 
 use failure;
 use sled::*;
@@ -98,6 +98,10 @@ impl DB {
     #[inline]
     fn service_perm_key(uid: UID, sid: SID) -> Vec<u8> {
         serialize(&(uid, sid)).unwrap()
+    }
+    #[inline]
+    fn service_perm_key_reverse(data: &[u8]) -> Result<(UID, SID)> {
+        Ok(deserialize(data)?)
     }
     /// Open tree with wrapped error
     fn open_tree(&self, tree: &'static str) -> Result<WTree> {
@@ -228,6 +232,17 @@ impl super::DBInterface for DB {
         Ok(users)
     }
 
+    fn get_perm_admin(&self) -> Result<Vec<UID>> {
+        let mut vec = Vec::new();
+        for val in self.open_tree(tree::PERMISSION_MANAGEMENT)?.iter() {
+            let (uid_r, perm_r) = val?;
+            if deserialize::<ManagementPerm>(&perm_r)?.admin {
+                vec.push(deserialize(&uid_r)?);
+            }
+        }
+        Ok(vec)
+    }
+
     fn get_perm_service(&self, id: UID, service: SID) -> Result<ServicePerm> {
         let v = self
             .open_tree(tree::PERMISSION_SERVICE)?
@@ -337,7 +352,7 @@ impl super::DBInterface for DB {
 
     fn update_user(&self, user: FullUser) -> Result<()> {
         if !self.is_valid_uid(&user.id)? {
-            return Err(super::Error::InvalidUser(user.id).into()); 
+            return Err(super::Error::InvalidUser(user.id).into());
         }
         let old_email = self.get_user(user.id)?.email;
         self.open_tree(tree::USER)?.set(ser!(user.id), ser!(user))?;

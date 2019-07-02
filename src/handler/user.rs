@@ -1,13 +1,12 @@
 use super::messages::*;
 
-use super::error::UserError;
+use super::error::{StartupError, UserError};
 use crate::crypto::*;
 use crate::db;
-use crate::db::{
-    models::*,
-    DBInterface, DB,
-};
+use crate::db::{models::*, DBInterface, DB};
+use crate::handler::service::ServiceController;
 use crate::web::models::{CreateUserState, LoginState, NewUser, UID};
+use actix;
 use actix::prelude::*;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
@@ -27,6 +26,33 @@ pub struct UserService {
 type Result<T> = ::std::result::Result<T, UserError>;
 
 impl UserService {
+    /// Insert full service perms for admins
+    ///
+    /// We could also just check the admin state, but this would require a second lookup
+    fn setup_admin_permissions(&self) {
+        trace!("Setting up admin permissions");
+        let fut = ServiceController::from_registry()
+            .send(GetServiceIDs {})
+            .map_err(StartupError::from)
+            .and_then(|response| match response {
+                Ok(services) => {
+                    for user in DB.get_perm_admin().map_err(UserError::from)? {
+                        for service in services.iter() {
+                            DB.set_perm_service(user, *service, ServicePerm::all())
+                                .map_err(UserError::from)?;
+                        }
+                    }
+                    Ok(())
+                }
+                Err(e) => Err(e.into()),
+            })
+            .map_err(|e| {
+                error!("Unable to initialize admin permissions! {}", e);
+                ()
+            });
+        actix::spawn(fut);
+    }
+    /// Delete old sessions
     fn cleanup_sessions(&mut self, _context: &mut Context<Self>) {
         match DB.delete_old_logins(self.login_max_age) {
             Ok(v) => debug!("Removed {} outdated logins.", v),
@@ -122,6 +148,8 @@ impl Handler<StartupCheck> for UserService {
                 }
             }
         }
+
+        self.setup_admin_permissions();
         Ok(())
     }
 }
