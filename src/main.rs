@@ -26,11 +26,20 @@ fn main() -> Fallible<()> {
     if std::env::var(RUST_LOG).is_err() {
         std::env::set_var(
             RUST_LOG,
+            #[cfg(debug_assertions)]
             "service_daemon=trace,actix_web=info,actix_server=info",
+            #[cfg(not(debug_assertions))]
+            "service_daemon=info,actix_web=info,actix_server=info",
         );
     }
     env_logger::init();
-    let settings = settings::Settings::new()?;
+    let settings = match settings::Settings::new() {
+        Err(e) => {
+            error!("Error parsing configuration: {}", e);
+            return Err(e.into());
+        }
+        Ok(v) => v,
+    };
     trace!("{:#?}", settings);
 
     let sys = actix_rt::System::new("sc-web");
