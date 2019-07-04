@@ -43,7 +43,7 @@ pub struct MinUser {
 #[derive(Debug, Serialize)]
 pub enum LoginState {
     /// Success
-    LoggedIn,
+    LoggedIn(String),
     /// Invalid credentials
     NotLoggedIn,
     /// totp-login required

@@ -139,7 +139,7 @@ fn login_core(session: String, data: Login) -> impl Future<Item = HttpResponse, 
         .map_err(Error::from)
         .map(|resp| match resp {
             Ok(v) => match &v {
-                LoginState::LoggedIn => HttpResponse::Accepted().json(v),
+                LoginState::LoggedIn(_) => HttpResponse::Accepted().json(v),
                 LoginState::NotLoggedIn => HttpResponse::Forbidden().json(v),
                 LoginState::RequiresTOTP => HttpResponse::Accepted().json(v),
                 LoginState::RequiresTOTPSetup(_) => HttpResponse::Accepted().json(v),
@@ -189,7 +189,7 @@ pub fn totp(
                         Ok(v) => v,
                     };
                     ok(match &v {
-                        LoginState::LoggedIn => HttpResponse::Accepted().json(v),
+                        LoginState::LoggedIn(_) => HttpResponse::Accepted().json(v),
                         LoginState::NotLoggedIn => HttpResponse::Forbidden().json(v),
                         LoginState::RequiresTOTP => HttpResponse::Ok().json(v),
                         LoginState::RequiresTOTPSetup(_) => HttpResponse::Ok().json(v),
@@ -219,7 +219,7 @@ pub fn login(
                         Ok(v) => v,
                     };
                     match val {
-                        LoginState::LoggedIn => {
+                        LoginState::LoggedIn(_) => {
                             Either::B(Either::A(ok(HttpResponse::BadRequest().json(val))))
                         }
                         _ => Either::B(Either::B(login_core(session, data))),

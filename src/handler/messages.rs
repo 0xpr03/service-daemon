@@ -60,6 +60,7 @@ pub struct SendStdin {
     pub input: String,
 }
 
+
 impl Message for SendStdin {
     type Result = Result<(), ControllerError>;
 }

@@ -167,11 +167,12 @@ impl Handler<LoginTOTP> for UserService {
         if expected_totp == msg.totp {
             login.state = db::models::LoginState::Complete;
             DB.set_login(&msg.session, Some(login))?;
+            let name = user.name.clone();
             if !user.totp_complete {
                 user.totp_complete = true;
                 DB.update_user(user)?;
             }
-            Ok(LoginState::LoggedIn)
+            Ok(LoginState::LoggedIn(name))
         } else {
             Ok(match user.totp_complete {
                 true => LoginState::RequiresTOTP,
@@ -216,7 +217,7 @@ impl Handler<CheckSession> for UserService {
         use db::models::LoginState as DBLoginState;
         Ok(match DB.get_login(&msg.session, self.login_max_age)? {
             Some(v) => match v.state {
-                DBLoginState::Complete => LoginState::LoggedIn,
+                DBLoginState::Complete => LoginState::LoggedIn(DB.get_user(v.id)?.name),
                 DBLoginState::Missing2Fa => LoginState::RequiresTOTP,
                 DBLoginState::Requires2FaSetup => {
                     LoginState::RequiresTOTPSetup(DB.get_user(v.id)?.totp.into())
