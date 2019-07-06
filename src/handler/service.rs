@@ -104,7 +104,7 @@ impl Handler<SendStdin> for ServiceController {
                 return Err(ControllerError::ServiceStopped.into());
             }
             if let Some(stdin) = service.stdin.as_mut() {
-                match stdin.try_send(msg.input) {
+                match stdin.try_send(format!("{}\n",msg.input)) {
                     Ok(()) => return Ok(()),
                     Err(e) => {
                         warn!("Unable to send message to {} {}", service.model.name, e);
