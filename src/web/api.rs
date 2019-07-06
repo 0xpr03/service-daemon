@@ -49,12 +49,28 @@ pub fn index(item: web::Path<ServiceRequest>) -> impl Future<Item = HttpResponse
             })
             .map_err(Error::from)
             .map(|response| match response {
-                Ok(v) => HttpResponse::Ok().body(v),
+                Ok(v) => HttpResponse::Ok().json(v),
                 Err(e) => e.error_response(),
             })
     }
     #[cfg(not(debug_assertions))]
     ok(HttpResponse::NotImplemented().finish())
+}
+
+pub fn state(
+    item: web::Path<ServiceRequest>,
+    id: Identity,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    let service = item.into_inner().service;
+    check_perm!(id.identity(), service, ServicePerm::STOP, move || {
+        ServiceController::from_registry()
+            .send(GetServiceState { id: service })
+            .map_err(Error::from)
+            .map(|response| match response {
+                Ok(v) => HttpResponse::Ok().json(v),
+                Err(e) => e.error_response(),
+            })
+    })
 }
 
 pub fn input(

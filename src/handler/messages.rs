@@ -1,5 +1,6 @@
 use super::error::*;
 use crate::db::models::ServicePerm;
+use crate::handler::service::{LogType,State};
 use crate::settings::Service;
 use crate::web::models::*;
 use actix::prelude::*;
@@ -41,12 +42,23 @@ impl Message for StopService {
     type Result = Result<(), ControllerError>;
 }
 
-pub struct GetOutput {
+#[derive(Message)]
+#[rtype(result = "Result<ServiceState, ControllerError>")]
+pub struct GetServiceState {
     pub id: SID,
 }
 
-impl Message for GetOutput {
-    type Result = Result<String, ControllerError>;
+#[derive(Serialize)]
+pub struct ServiceState {
+    pub name: String,
+    pub state: State,
+    pub uptime: u64,
+}
+
+#[derive(Message)]
+#[rtype(result = "Result<Vec<LogType<String>>, ControllerError>")]
+pub struct GetOutput {
+    pub id: SID,
 }
 
 impl Message for GetServiceIDs {
@@ -59,7 +71,6 @@ pub struct SendStdin {
     pub id: SID,
     pub input: String,
 }
-
 
 impl Message for SendStdin {
     type Result = Result<(), ControllerError>;

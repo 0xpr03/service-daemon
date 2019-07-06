@@ -33,6 +33,10 @@ pub fn start(domain: String, max_age_secs: i64) -> std::io::Result<Server> {
                     .service(web::resource("/checklogin").route(web::get().to_async(api::checklogin)))
                     .service(web::resource("/totp").route(web::post().to_async(api::totp)))
                     .service(
+                        web::resource("/service/{service}/state")
+                            .route(web::get().to_async(api::state)),
+                    )
+                    .service(
                         web::resource("/service/{service}/output")
                             .route(web::get().to_async(api::output)),
                     )
@@ -48,7 +52,7 @@ pub fn start(domain: String, max_age_secs: i64) -> std::io::Result<Server> {
                         web::resource("/service/{service}/start")
                             .route(web::post().to_async(api::start)),
                     )
-                    .service(web::resource("/service").route(web::get().to_async(api::services))),
+                    .service(web::resource("/services").route(web::get().to_async(api::services))),
             )
             // todo: debug only!
             .service(web::resource("/{service}").route(web::get().to_async(api::index)))
