@@ -54,9 +54,7 @@ pub fn start(domain: String, max_age_secs: i64) -> std::io::Result<Server> {
                     )
                     .service(web::resource("/services").route(web::get().to_async(api::services))),
             )
-            // todo: debug only!
-            .service(web::resource("/{service}").route(web::get().to_async(api::index)))
-            .service(fs::Files::new("/", "./static/").index_file("index.html"))
+            .service(fs::Files::new("/", "./static").index_file("index.html"))
     })
     // let ServiceController handle signals
     // .disable_signals()
