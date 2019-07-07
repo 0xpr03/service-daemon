@@ -10,6 +10,7 @@ use actix_web::{error::ResponseError, web, Error, HttpResponse};
 use futures::future::{err, ok, Either};
 use nanoid;
 
+/// Execute $cmd if $session is logged in & has $perm:ServicePerm on $service:SID
 macro_rules! check_perm {
     ($session:expr,$service:expr,$perm:expr,$cmd:expr) => {
         if let Some(session) = $session {
@@ -22,7 +23,7 @@ macro_rules! check_perm {
                     .map_err(Error::from)
                     .and_then(move |res| match res {
                         Ok(perms) => {
-                            if perms.contains(ServicePerm::STOP) {
+                            if perms.contains($perm) {
                                 Either::A($cmd())
                             } else {
                                 Either::B(Either::A(ok(
@@ -79,7 +80,7 @@ pub fn input(
     id: Identity,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     let service = item.into_inner().service;
-    check_perm!(id.identity(), service, ServicePerm::STOP, move || {
+    check_perm!(id.identity(), service, ServicePerm::STDIN_ALL, move || {
         ServiceController::from_registry()
             .send(SendStdin {
                 id: service,
@@ -253,7 +254,7 @@ pub fn output(
     id: Identity,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     let service = item.into_inner().service;
-    check_perm!(id.identity(), service, ServicePerm::STOP, move || {
+    check_perm!(id.identity(), service, ServicePerm::STDOUT, move || {
         ServiceController::from_registry()
             .send(GetOutput { id: service })
             .map_err(Error::from)

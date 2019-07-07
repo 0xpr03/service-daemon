@@ -22,7 +22,7 @@ pub fn start(domain: String, max_age_secs: i64) -> std::io::Result<Server> {
                     // #[cfg(not(debug_assertions))]
                     // .domain(domain.as_str())
                     .max_age(max_age_secs) // 1 day
-                    // .http_only(true) already set by actix
+                    // .http_only(true) already set by CookieIdentityPolicy
                     .secure(false),
             ))
             .service(
