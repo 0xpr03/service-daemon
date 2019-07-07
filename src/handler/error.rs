@@ -46,6 +46,8 @@ pub enum UserError {
     InvalidSession,
     #[fail(display = "Error when accessing resource: {}", _0)]
     SendError(#[cause] MailboxError),
+    #[fail(display = "Email already in use")]
+    EmailInUse,
 }
 
 impl ResponseError for UserError {
@@ -97,6 +99,14 @@ pub enum ControllerError {
     UserError(#[cause] UserError),
     #[fail(display = "Error when accessing resource: {}", _0)]
     SendError(#[cause] MailboxError),
+    #[fail(display = "Internal DB error {}", _0)]
+    DBError(db::Error),
+}
+
+impl From<db::Error> for ControllerError {
+    fn from(error: db::Error) -> Self {
+        ControllerError::DBError(error)
+    }
 }
 
 impl From<UserError> for ControllerError {

@@ -1,4 +1,4 @@
-pub use crate::web::models::MinUser;
+pub use crate::web::models::UserMin;
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
@@ -113,9 +113,6 @@ impl Default for ServicePerm {
         Self::empty()
     }
 }
-
-/// Specific commands a user can use
-pub type StdinCommands = Vec<String>;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(Clone, PartialEq))]

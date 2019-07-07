@@ -25,34 +25,29 @@ pub fn start(domain: String, max_age_secs: i64) -> std::io::Result<Server> {
                     // .http_only(true) already set by CookieIdentityPolicy
                     .secure(false),
             ))
-            .service(
-                web::scope("/api")
-                    .data(web::JsonConfig::default().limit(4096))
-                    .service(web::resource("/logout").route(web::post().to_async(api::logout)))
-                    .service(web::resource("/login").route(web::post().to_async(api::login)))
-                    .service(web::resource("/checklogin").route(web::get().to_async(api::checklogin)))
-                    .service(web::resource("/totp").route(web::post().to_async(api::totp)))
-                    .service(
-                        web::resource("/service/{service}/state")
-                            .route(web::get().to_async(api::state)),
-                    )
-                    .service(
-                        web::resource("/service/{service}/output")
-                            .route(web::get().to_async(api::output)),
-                    )
-                    .service(
-                        web::resource("/service/{service}/input")
-                            .route(web::post().to_async(api::input)),
-                    )
-                    .service(
-                        web::resource("/service/{service}/stop")
-                            .route(web::post().to_async(api::stop)),
-                    )
-                    .service(
-                        web::resource("/service/{service}/start")
-                            .route(web::post().to_async(api::start)),
-                    )
-                    .service(web::resource("/services").route(web::get().to_async(api::services))),
+            .service(web::scope("/api")
+                .data(web::JsonConfig::default().limit(4096))
+                .service(web::resource("/logout").route(web::post().to_async(api::logout)))
+                .service(web::resource("/login").route(web::post().to_async(api::login)))
+                .service(web::resource("/checklogin").route(web::get().to_async(api::checklogin)))
+                .service(web::resource("/totp").route(web::post().to_async(api::totp)))
+                .service(web::scope("/user")
+                    .service(web::resource("/list").route(web::get().to_async(api::user_list)))
+                    .service(web::resource("/create").route(web::post().to_async(api::create_user)))
+                    .service(web::resource("/{user}/info").route(web::get().to_async(api::user_info)))
+                    .service(web::resource("/{user}/delete").route(web::post().to_async(api::delete_user)))
+                    .service(web::resource("/{user}/services").route(web::get().to_async(api::all_user_services)))
+                    .service(web::resource("/{user}/permissions/{service}").route(web::get().to_async(api::get_service_permission)))
+                    .service(web::resource("/{user}/permissions/{service}").route(web::post().to_async(api::set_service_permission)))
+                )
+                .service(web::scope("/service/{service}")
+                    .service(web::resource("/state").route(web::get().to_async(api::state)))
+                    .service(web::resource("/output").route(web::get().to_async(api::output)))
+                    .service(web::resource("/input").route(web::post().to_async(api::input)))
+                    .service(web::resource("/stop").route(web::post().to_async(api::stop)))
+                    .service(web::resource("/start").route(web::post().to_async(api::start)))
+                )
+                .service(web::resource("/services").route(web::get().to_async(api::services)))
             )
             .service(fs::Files::new("/", "./static").index_file("index.html"))
     })

@@ -1,78 +1,23 @@
 use super::error::*;
-use crate::db::models::ServicePerm;
+use crate::db::models::{ManagementPerm, ServicePerm};
 use crate::handler::service::{LogType, State};
 use crate::settings::Service;
 use crate::web::models::*;
 use actix::prelude::*;
 use serde::Serialize;
 
-#[derive(Message)]
-pub struct ServiceStateChanged {
-    pub id: SID,
-    pub running: bool,
-}
-
-#[derive(Message)]
-#[rtype(result = "Result<(), UserError>")]
-pub struct StartupCheck {}
-
-#[derive(Message)]
-pub struct LoadServices {
-    pub data: Vec<Service>,
-}
-
-#[derive(Message)]
-pub struct SetPasswordCost {
-    pub cost: u32,
-}
-
-#[derive(Message)]
-#[rtype(result = "Result<(), ControllerError>")]
-pub struct StartService {
-    pub id: SID,
-}
-
-#[derive(Message)]
-#[rtype(result = "Result<(), ControllerError>")]
-pub struct StopService {
-    pub id: SID,
-}
-
-#[derive(Message)]
-#[rtype(result = "Result<ServiceState, ControllerError>")]
-pub struct GetServiceState {
-    pub id: SID,
-}
-
 #[derive(Serialize)]
 pub struct ServiceState {
+    pub id: SID,
     pub name: String,
     pub state: State,
     pub uptime: u64,
-}
-
-#[derive(Message)]
-#[rtype(result = "Result<Vec<LogType<String>>, ControllerError>")]
-pub struct GetOutput {
-    pub id: SID,
-}
-
-#[derive(Message)]
-#[rtype(result = "Result<Vec<SID>, ControllerError>")]
-pub struct GetServiceIDs {}
-
-#[derive(Message)]
-#[rtype(result = "Result<(), ControllerError>")]
-pub struct SendStdin {
-    pub id: SID,
-    pub input: String,
 }
 
 #[derive(Serialize)]
 pub struct ServiceMin {
     pub id: SID,
     pub name: String,
-    pub running: bool,
 }
 
 #[derive(Message)]
@@ -102,16 +47,33 @@ pub struct LogoutUser {
     pub session: Session,
 }
 
+/// Create a new user, checked
 #[derive(Message)]
-#[rtype(result = "Result<CreateUserState, UserError>")]
+#[rtype(result = "Result<CreateUserResp, UserError>")]
 pub struct CreateUser {
-    pub invoker: UID,
+    pub invoker: Session,
     pub user: NewUser,
+}
+
+/// Delete a user, checked
+#[derive(Message)]
+#[rtype(result = "Result<(), UserError>")]
+pub struct DeleteUser {
+    pub invoker: Session,
+    pub user: UID,
 }
 
 #[derive(Message)]
 #[rtype(result = "Result<Vec<SID>, UserError>")]
-pub struct GetUserServiceIDs {
+pub struct GetSessionServiceIDs {
+    pub session: Session,
+}
+
+/// Get permissions of session for management
+/// Returns error if no valid session is found
+#[derive(Message)]
+#[rtype(result = "Result<ManagementPerm, UserError>")]
+pub struct GetManagementPerm {
     pub session: Session,
 }
 
@@ -126,8 +88,8 @@ pub struct GetServicePerm {
 
 /// Get all ServiceMin representations of services a use has access to
 #[derive(Message)]
-#[rtype(result = "Result<Vec<ServiceMin>, ControllerError>")]
-pub struct GetUserServices {
+#[rtype(result = "Result<Vec<ServiceState>, ControllerError>")]
+pub struct GetSessionServices {
     pub session: Session,
 }
 
@@ -140,10 +102,130 @@ pub struct EditUser {
 }
 
 #[derive(PartialEq)]
+#[allow(unused)]
 pub enum EditUserData {
     Name(String),
     Mail(String),
     ServicePermission((SID, ServicePerm)),
     Password(String),
     // TOTP(String),
+}
+
+/// Unchecked commands, part of the internal API and should not be callable without authentification checks.
+pub mod unchecked {
+    use super::*;
+    use std::collections::HashMap;
+
+    /// **Unchecked!** Set permissions of user for service, for administration
+    #[derive(Message)]
+    #[rtype(result = "Result<(), UserError>")]
+    pub struct SetServicePermUser {
+        pub user: UID,
+        pub service: SID,
+        pub perm: ServicePerm,
+    }
+
+    /// **Unchecked!** Get permissions of user for service, for administration
+    #[derive(Message)]
+    #[rtype(result = "Result<ServicePerm, UserError>")]
+    pub struct GetServicePermUser {
+        pub user: UID,
+        pub service: SID,
+    }
+
+    /// **Unchecked!** send stdin to service
+    #[derive(Message)]
+    #[rtype(result = "Result<(), ControllerError>")]
+    pub struct SendStdin {
+        pub id: SID,
+        pub input: String,
+    }
+
+    /// **Unchecked!** send stdin to service
+    #[derive(Message)]
+    pub struct SetPasswordCost {
+        pub cost: u32,
+    }
+
+    /// **Unchecked!** start service
+    #[derive(Message)]
+    #[rtype(result = "Result<(), ControllerError>")]
+    pub struct StartService {
+        pub id: SID,
+    }
+
+    /// **Unchecked!** stop service
+    #[derive(Message)]
+    #[rtype(result = "Result<(), ControllerError>")]
+    pub struct StopService {
+        pub id: SID,
+    }
+
+    /// **Unchecked!** get service status
+    #[derive(Message)]
+    #[rtype(result = "Result<ServiceState, ControllerError>")]
+    pub struct GetServiceState {
+        pub id: SID,
+    }
+
+    /// **Unchecked!** get service output
+    #[derive(Message)]
+    #[rtype(result = "Result<Vec<LogType<String>>, ControllerError>")]
+    pub struct GetOutput {
+        pub id: SID,
+    }
+
+    /// **Unchecked!** internal
+    #[derive(Message)]
+    pub struct ServiceStateChanged {
+        pub id: SID,
+        pub running: bool,
+    }
+
+    /// **Unchecked!** internal
+    #[derive(Message)]
+    #[rtype(result = "Result<(), UserError>")]
+    pub struct StartupCheck {}
+
+    /// **Unchecked!** internal
+    #[derive(Message)]
+    pub struct LoadServices {
+        pub data: Vec<Service>,
+    }
+
+    /// **Unchecked!** get all services
+    #[derive(Message)]
+    #[rtype(result = "Result<Vec<SID>, ControllerError>")]
+    pub struct GetServiceIDs {}
+
+    /// **Unchecked!** get all services as min representation
+    #[derive(Message)]
+    #[rtype(result = "Result<Vec<ServiceMin>, ControllerError>")]
+    pub struct GetAllServicesMin {}
+
+    /// **Unchecked!** get all services as min representation
+    #[derive(Message)]
+    #[rtype(result = "Result<Vec<UserMin>, UserError>")]
+    pub struct GetAllUsers {}
+
+    /// **Unchecked!** get all SIDs with the permissions of the specified user
+    #[derive(Message)]
+    #[rtype(result = "Result<HashMap<SID,SPMin>, ControllerError>")]
+    pub struct GetUserServicePermsAll {
+        pub user: UID,
+    }
+
+    #[derive(Serialize)]
+    pub struct SPMin {
+        pub id: SID,
+        pub name: String,
+        pub has_perm: bool,
+    }
+
+    /// **Unchecked!** get all SIDs with the permissions of the specified user
+    #[derive(Message)]
+    #[rtype(result = "Result<UserMin, UserError>")]
+    pub struct GetUserInfo {
+        pub user: UID,
+    }
 }

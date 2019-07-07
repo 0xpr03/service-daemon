@@ -225,16 +225,12 @@ impl super::DBInterface for DB {
         }
     }
 
-    fn get_users(&self) -> Result<Vec<MinUser>> {
+    fn get_users(&self) -> Result<Vec<UserMin>> {
         let mut users = Vec::new();
         for u in self.open_tree(tree::USER)?.iter() {
             let (_, v) = u?;
             let user: FullUser = deserialize(&v)?;
-            users.push(MinUser {
-                name: user.name,
-                id: user.id,
-                email: user.email,
-            });
+            users.push(UserMin::from(user));
         }
         Ok(users)
     }

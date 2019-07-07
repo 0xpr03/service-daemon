@@ -9,6 +9,17 @@ pub struct ServiceRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct UserRequest {
+    pub user: UID,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PermRequest {
+    pub service: SID,
+    pub user: UID,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct NewUser {
     pub name: String,
     pub password: String,
@@ -33,10 +44,20 @@ impl From<dbmodels::TOTP> for TOTP {
 }
 
 #[derive(Debug, Serialize)]
-pub struct MinUser {
+pub struct UserMin {
     pub name: String,
     pub id: UID,
     pub email: String,
+}
+
+impl From<dbmodels::FullUser> for UserMin {
+    fn from(user: dbmodels::FullUser) -> Self {
+        Self {
+            name: user.name,
+            id: user.id,
+            email: user.email,
+        }
+    }
 }
 
 /// Login state sent via API
@@ -61,7 +82,6 @@ pub struct Login {
 pub type TOTPValue = u64;
 
 #[derive(Debug, Serialize)]
-pub enum CreateUserState {
-    Success(UID),
-    EMailClaimed,
+pub struct CreateUserResp {
+    pub uid: UID,
 }

@@ -1,10 +1,11 @@
 use super::error::ControllerError;
+use crate::db::{DBInterface, DB};
 use crate::handler::user::UserService;
+use crate::messages::unchecked::*;
 use crate::messages::*;
 use crate::settings::Service;
 use crate::web::models::SID;
 
-use strip_ansi_escapes as ansi_esc;
 use actix::fut::{err, ok, Either};
 use actix::prelude::*;
 use actix::spawn;
@@ -12,12 +13,13 @@ use arraydeque::{ArrayDeque, Wrapping};
 use failure::Fallible;
 use metrohash::MetroHashMap;
 use serde::Serialize;
+use strip_ansi_escapes as ansi_esc;
 use tokio_io::io::write_all;
 use tokio_process::CommandExt;
 
 use futures::{self, Future, Stream};
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::process::{Command, Stdio};
 use std::sync::atomic::Ordering;
@@ -104,7 +106,7 @@ impl Handler<SendStdin> for ServiceController {
                 return Err(ControllerError::ServiceStopped.into());
             }
             if let Some(stdin) = service.stdin.as_mut() {
-                match stdin.try_send(format!("{}\n",msg.input)) {
+                match stdin.try_send(format!("{}\n", msg.input)) {
                     Ok(()) => return Ok(()),
                     Err(e) => {
                         warn!("Unable to send message to {} {}", service.model.name, e);
@@ -173,24 +175,42 @@ impl Handler<GetOutput> for ServiceController {
             let msg = tty_r
                 .iter()
                 .map(|s| match s {
-                    LogType::State(s) => {
-                        LogType::State(String::from_utf8_lossy(&s).into_owned())
-                    }
-                    LogType::Stderr(s) => {
-                        LogType::Stderr(String::from_utf8_lossy(&s).into_owned())
-                    }
-                    LogType::Stdout(s) => {
-                        LogType::Stdout(String::from_utf8_lossy(&s).into_owned())
-                    }
-                    LogType::Stdin(s) => {
-                        LogType::Stdin(String::from_utf8_lossy(&s).into_owned())
-                    }
+                    LogType::State(s) => LogType::State(String::from_utf8_lossy(&s).into_owned()),
+                    LogType::Stderr(s) => LogType::Stderr(String::from_utf8_lossy(&s).into_owned()),
+                    LogType::Stdout(s) => LogType::Stdout(String::from_utf8_lossy(&s).into_owned()),
+                    LogType::Stdin(s) => LogType::Stdin(String::from_utf8_lossy(&s).into_owned()),
                 })
                 .collect::<Vec<_>>();
             Ok(msg)
         } else {
             Err(ControllerError::InvalidInstance(msg.id).into())
         }
+    }
+}
+
+impl Handler<GetUserServicePermsAll> for ServiceController {
+    type Result = Result<HashMap<SID, SPMin>, ControllerError>;
+
+    fn handle(&mut self, msg: GetUserServicePermsAll, _ctx: &mut Context<Self>) -> Self::Result {
+        let mut data = HashMap::with_capacity(self.services.len());
+        self.services.iter().for_each(|(k, v)| {
+            data.insert(
+                k.clone(),
+                SPMin {
+                    id: k.clone(),
+                    name: v.model.name.clone(),
+                    has_perm: false,
+                },
+            );
+        });
+        DB.get_all_perm_service(msg.user)?
+            .iter()
+            .for_each(|(k, v)| {
+                if let Some(mut entry) = data.get_mut(k) {
+                    entry.has_perm = !v.is_empty();
+                }
+            });
+        Ok(data)
     }
 }
 
@@ -202,12 +222,12 @@ impl Handler<GetServiceIDs> for ServiceController {
     }
 }
 
-impl Handler<GetUserServices> for ServiceController {
-    type Result = ResponseActFuture<Self, Vec<ServiceMin>, ControllerError>;
+impl Handler<GetSessionServices> for ServiceController {
+    type Result = ResponseActFuture<Self, Vec<ServiceState>, ControllerError>;
     // kind of breaks separation of concerns, but to make this performant we'll have to call UserService from here
-    fn handle(&mut self, msg: GetUserServices, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: GetSessionServices, _ctx: &mut Context<Self>) -> Self::Result {
         let fut = UserService::from_registry()
-            .send(GetUserServiceIDs {
+            .send(GetSessionServiceIDs {
                 session: msg.session,
             })
             .map_err(ControllerError::from);
@@ -225,10 +245,11 @@ impl Handler<GetUserServices> for ServiceController {
                 .values()
                 .filter_map(|v| {
                     if services.contains(&v.model.id) {
-                        Some(ServiceMin {
+                        Some(ServiceState {
                             id: v.model.id,
                             name: v.model.name.clone(),
-                            running: v.running.load(Ordering::Relaxed),
+                            state: v.state.get_state(),
+                            uptime: v.uptime(),
                         })
                     } else {
                         None
@@ -240,17 +261,29 @@ impl Handler<GetUserServices> for ServiceController {
     }
 }
 
+impl Handler<GetAllServicesMin> for ServiceController {
+    type Result = Result<Vec<ServiceMin>, ControllerError>;
+    fn handle(&mut self, _msg: GetAllServicesMin, _ctx: &mut Context<Self>) -> Self::Result {
+        Ok(self
+            .services
+            .values()
+            .map(|v| ServiceMin {
+                id: v.model.id,
+                name: v.model.name.clone(),
+            })
+            .collect())
+    }
+}
+
 impl Handler<GetServiceState> for ServiceController {
     type Result = Result<ServiceState, ControllerError>;
     fn handle(&mut self, msg: GetServiceState, _ctx: &mut Context<Self>) -> Self::Result {
         if let Some(v) = self.services.get(&msg.id) {
             Ok(ServiceState {
+                id: msg.id,
                 name: v.model.name.clone(),
                 state: v.state.get_state(),
-                uptime: v
-                    .start_time
-                    .as_ref()
-                    .map_or(0, |v| get_system_time_64() - v),
+                uptime: v.uptime(),
             })
         } else {
             Err(ControllerError::InvalidInstance(msg.id))
@@ -341,6 +374,11 @@ impl From<usize> for State {
 }
 
 impl Instance {
+    fn uptime(&self) -> u64 {
+        self.start_time
+            .as_ref()
+            .map_or(0, |v| get_system_time_64() - v)
+    }
     fn run(&mut self, addr: Addr<ServiceController>) -> Result<(), ::std::io::Error> {
         if self.model.enabled
             && !self
@@ -474,9 +512,7 @@ impl Instance {
             let child = child
                 .select(rx.map_err(|_| ()).map(move |_| {
                     let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
-                    buffer_w.push_back(LogType::State(
-                        String::from("Process killed").into_bytes(),
-                    ));
+                    buffer_w.push_back(LogType::State(String::from("Process killed").into_bytes()));
                 }))
                 .then(|_x| Ok(()));
             self.stop_channel = Some(tx);

@@ -58,16 +58,16 @@ fn main() -> Fallible<()> {
     //     .map_err(|_| ());
     // actix::spawn(fut);
     let startup = ServiceController::from_registry()
-        .send(messages::LoadServices {
+        .send(messages::unchecked::LoadServices {
             data: settings.services,
         })
         .map_err(|_| ());
     actix::spawn(startup);
     let crypto_setup = UserService::from_registry()
-        .send(messages::SetPasswordCost {
+        .send(messages::unchecked::SetPasswordCost {
             cost: settings.security.bcrypt_cost,
         })
-        .and_then(|_| UserService::from_registry().send(messages::StartupCheck {}))
+        .and_then(|_| UserService::from_registry().send(messages::unchecked::StartupCheck {}))
         .map(|_| ())
         .map_err(|e| error!("User-Service startup check failed! {}", e));
     actix::spawn(crypto_setup);

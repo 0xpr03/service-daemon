@@ -1,11 +1,11 @@
-use super::messages::*;
-
 use super::error::{StartupError, UserError};
+use super::messages::unchecked::*;
+use super::messages::*;
 use crate::crypto::*;
 use crate::db;
 use crate::db::{models::*, DBInterface, DB};
 use crate::handler::service::ServiceController;
-use crate::web::models::{CreateUserState, LoginState, NewUser, UID};
+use crate::web::models::{CreateUserResp, LoginState, NewUser, UserMin, UID};
 use actix;
 use actix::prelude::*;
 use rand::distributions::Alphanumeric;
@@ -62,6 +62,13 @@ impl UserService {
     fn is_admin(&self, user: UID) -> Result<bool> {
         Ok(DB.get_perm_man(user)?.admin)
     }
+    /// Check if user is admin, errors otherwise
+    fn check_admin(&self, user: UID) -> Result<()> {
+        match self.is_admin(user)? {
+            true => Ok(()),
+            false => Err(UserError::InvalidPermissions),
+        }
+    }
     fn get_root_user(&self) -> Result<Option<FullUser>> {
         match DB.get_user(DB.get_root_id()) {
             Ok(user) => Ok(Some(user)),
@@ -69,7 +76,7 @@ impl UserService {
             Err(e) => Err(e.into()),
         }
     }
-    fn create_user_unchecked(&self, user: NewUser) -> Result<CreateUserState> {
+    fn create_user_unchecked(&self, user: NewUser) -> Result<CreateUserResp> {
         let user_enc = NewUserEnc {
             email: user.email,
             name: user.name,
@@ -79,11 +86,11 @@ impl UserService {
         match v {
             Err(e) => {
                 if let db::Error::EMailExists(_) = e {
-                    return Ok(CreateUserState::EMailClaimed);
+                    return Err(UserError::EmailInUse);
                 }
                 Err(e.into())
             }
-            Ok(user) => Ok(CreateUserState::Success(user.id)),
+            Ok(user) => Ok(CreateUserResp { uid: user.id }),
         }
     }
 }
@@ -121,8 +128,9 @@ impl Handler<StartupCheck> for UserService {
                 name: ROOT_NAME.to_string(),
                 password: password.clone(),
                 email: ROOT_EMAIL.to_string(),
-            })? {
-                CreateUserState::Success(uid) => {
+            }) {
+                Ok(v) => {
+                    let uid = v.uid;
                     assert_eq!(uid, DB.get_root_id());
                     let end = start.elapsed().as_millis();
 
@@ -140,10 +148,10 @@ impl Handler<StartupCheck> for UserService {
                     info!("Email: {} Passwort: {}", ROOT_EMAIL, password);
                     info!("Please login to setup 2FA!");
                 }
-                v => {
+                Err(e) => {
                     return Err(UserError::InternalError(format!(
                         "Couldn't create root user: {:?}",
-                        v
+                        e
                     )))
                 }
             }
@@ -228,18 +236,53 @@ impl Handler<CheckSession> for UserService {
     }
 }
 
-impl Handler<GetUserServiceIDs> for UserService {
+impl Handler<GetSessionServiceIDs> for UserService {
     type Result = Result<Vec<SID>>;
 
-    fn handle(&mut self, msg: GetUserServiceIDs, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: GetSessionServiceIDs, _ctx: &mut Context<Self>) -> Self::Result {
         match DB.get_login(&msg.session, self.login_max_age)? {
             Some(v) => Ok(DB
                 .get_all_perm_service(v.id)?
                 .into_iter()
-                .map(|(k, v)| k)
+                .map(|(k, _)| k)
                 .collect()),
             None => Err(UserError::InvalidSession),
         }
+    }
+}
+
+impl Handler<GetManagementPerm> for UserService {
+    type Result = Result<ManagementPerm>;
+
+    fn handle(&mut self, msg: GetManagementPerm, _ctx: &mut Context<Self>) -> Self::Result {
+        let uid = match DB.get_login(&msg.session, self.login_max_age)? {
+            Some(v) => {
+                use db::models::LoginState as DBLoginState;
+                if v.state != DBLoginState::Complete {
+                    return Err(UserError::InvalidPermissions);
+                }
+                v.id
+            }
+            None => return Err(UserError::InvalidSession),
+        };
+        Ok(DB.get_perm_man(uid)?)
+    }
+}
+
+impl Handler<GetServicePermUser> for UserService {
+    type Result = Result<ServicePerm>;
+
+    fn handle(&mut self, msg: GetServicePermUser, _ctx: &mut Context<Self>) -> Self::Result {
+        Ok(DB.get_perm_service(msg.user, msg.service)?)
+    }
+}
+
+impl Handler<SetServicePermUser> for UserService {
+    type Result = Result<()>;
+
+    fn handle(&mut self, msg: SetServicePermUser, _ctx: &mut Context<Self>) -> Self::Result {
+        DB.set_perm_service(msg.user, msg.service, msg.perm)?;
+        Ok(())
     }
 }
 
@@ -273,14 +316,62 @@ impl Handler<LogoutUser> for UserService {
     }
 }
 
+impl Handler<GetAllUsers> for UserService {
+    type Result = Result<Vec<UserMin>>;
+
+    fn handle(&mut self, _msg: GetAllUsers, _ctx: &mut Context<Self>) -> Self::Result {
+        Ok(DB.get_users()?)
+    }
+}
+
 impl Handler<CreateUser> for UserService {
-    type Result = Result<CreateUserState>;
+    type Result = Result<CreateUserResp>;
 
     fn handle(&mut self, msg: CreateUser, _ctx: &mut Context<Self>) -> Self::Result {
-        if !self.is_admin(msg.invoker)? {
+        let uid = match DB.get_login(&msg.invoker, self.login_max_age)? {
+            Some(v) => {
+                use db::models::LoginState as DBLoginState;
+                if v.state != DBLoginState::Complete {
+                    return Err(UserError::InvalidPermissions);
+                }
+                v.id
+            }
+            None => return Err(UserError::InvalidSession),
+        };
+        self.check_admin(uid)?;
+        self.create_user_unchecked(msg.user)
+    }
+}
+
+impl Handler<GetUserInfo> for UserService {
+    type Result = Result<UserMin>;
+
+    fn handle(&mut self, msg: GetUserInfo, _ctx: &mut Context<Self>) -> Self::Result {
+        Ok(DB.get_user(msg.user)?.into())
+    }
+}
+
+impl Handler<DeleteUser> for UserService {
+    type Result = Result<()>;
+
+    fn handle(&mut self, msg: DeleteUser, _ctx: &mut Context<Self>) -> Self::Result {
+        let uid = match DB.get_login(&msg.invoker, self.login_max_age)? {
+            Some(v) => {
+                use db::models::LoginState as DBLoginState;
+                if v.state != DBLoginState::Complete {
+                    return Err(UserError::InvalidPermissions);
+                }
+                v.id
+            }
+            None => return Err(UserError::InvalidSession),
+        };
+        if uid == msg.user {
+            // can't delete admins
+            warn!("{} tried to delete admin user {}", uid, msg.user);
             return Err(UserError::InvalidPermissions);
         }
-        self.create_user_unchecked(msg.user)
+        self.check_admin(uid)?;
+        Ok(DB.delete_user(msg.user)?)
     }
 }
 

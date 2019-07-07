@@ -49,7 +49,7 @@ pub trait DBInterface: Sized {
     /// Update user settings
     fn update_user(&self, user: FullUser) -> Result<()>;
     /// Get all users in min representation
-    fn get_users(&self) -> Result<Vec<MinUser>>;
+    fn get_users(&self) -> Result<Vec<UserMin>>;
     /// Get all admin UIDs
     fn get_perm_admin(&self) -> Result<Vec<UID>>;
     /// Get user permissions for management
