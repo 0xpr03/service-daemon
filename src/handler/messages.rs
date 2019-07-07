@@ -1,6 +1,6 @@
 use super::error::*;
 use crate::db::models::ServicePerm;
-use crate::handler::service::{LogType,State};
+use crate::handler::service::{LogType, State};
 use crate::settings::Service;
 use crate::web::models::*;
 use actix::prelude::*;
@@ -26,20 +26,16 @@ pub struct SetPasswordCost {
     pub cost: u32,
 }
 
+#[derive(Message)]
+#[rtype(result = "Result<(), ControllerError>")]
 pub struct StartService {
     pub id: SID,
 }
 
-impl Message for StartService {
-    type Result = Result<(), ControllerError>;
-}
-
+#[derive(Message)]
+#[rtype(result = "Result<(), ControllerError>")]
 pub struct StopService {
     pub id: SID,
-}
-
-impl Message for StopService {
-    type Result = Result<(), ControllerError>;
 }
 
 #[derive(Message)]
@@ -61,19 +57,15 @@ pub struct GetOutput {
     pub id: SID,
 }
 
-impl Message for GetServiceIDs {
-    type Result = Result<Vec<SID>, ControllerError>;
-}
-
+#[derive(Message)]
+#[rtype(result = "Result<Vec<SID>, ControllerError>")]
 pub struct GetServiceIDs {}
 
+#[derive(Message)]
+#[rtype(result = "Result<(), ControllerError>")]
 pub struct SendStdin {
     pub id: SID,
     pub input: String,
-}
-
-impl Message for SendStdin {
-    type Result = Result<(), ControllerError>;
 }
 
 #[derive(Serialize)]
@@ -83,48 +75,38 @@ pub struct ServiceMin {
     pub running: bool,
 }
 
+#[derive(Message)]
+#[rtype(result = "Result<LoginState, UserError>")]
 pub struct CheckSession {
     pub session: Session,
 }
 
-impl Message for CheckSession {
-    type Result = Result<LoginState, UserError>;
-}
-
+#[derive(Message)]
+#[rtype(result = "Result<LoginState, UserError>")]
 pub struct LoginUser {
     pub email: String,
     pub password: String,
     pub session: Session,
 }
 
-impl Message for LoginUser {
-    type Result = Result<LoginState, UserError>;
-}
-
+#[derive(Message)]
+#[rtype(result = "Result<LoginState, UserError>")]
 pub struct LoginTOTP {
     pub session: Session,
     pub totp: u64,
 }
 
-impl Message for LoginTOTP {
-    type Result = Result<LoginState, UserError>;
-}
-
+#[derive(Message)]
+#[rtype(result = "Result<(), UserError>")]
 pub struct LogoutUser {
     pub session: Session,
 }
 
-impl Message for LogoutUser {
-    type Result = Result<(), UserError>;
-}
-
+#[derive(Message)]
+#[rtype(result = "Result<CreateUserState, UserError>")]
 pub struct CreateUser {
     pub invoker: UID,
     pub user: NewUser,
-}
-
-impl Message for CreateUser {
-    type Result = Result<CreateUserState, UserError>;
 }
 
 #[derive(Message)]
@@ -142,20 +124,19 @@ pub struct GetServicePerm {
     pub service: SID,
 }
 
+/// Get all ServiceMin representations of services a use has access to
 #[derive(Message)]
 #[rtype(result = "Result<Vec<ServiceMin>, ControllerError>")]
 pub struct GetUserServices {
     pub session: Session,
 }
 
+#[derive(Message)]
+#[rtype(result = "Result<bool, UserError>")]
 pub struct EditUser {
     pub invoker: UID,
     pub user_uid: UID,
     pub data: EditUserData,
-}
-
-impl Message for EditUser {
-    type Result = Result<bool, UserError>;
 }
 
 #[derive(PartialEq)]
