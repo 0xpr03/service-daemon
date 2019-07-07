@@ -86,7 +86,14 @@ pub struct DB {
 impl Default for DB {
     fn default() -> Self {
         Self {
-            db: Db::start_default("db.sled").unwrap(),
+            // TODO: this does NOT return but panic when the DB is already in use
+            db: match Db::start_default("db.sled") {
+                Err(e) => {
+                    error!("Unable to start local DB: {}", e);
+                    panic!("Unable to start local DB: {}", e);
+                }
+                Ok(v) => v,
+            },
         }
     }
 }
