@@ -8,8 +8,7 @@ use actix_identity::*;
 use actix_web::cookie::SameSite;
 use actix_web::dev::Server;
 use actix_web::middleware::Logger;
-
-use actix_web::{web, App, HttpServer};
+use actix_web::{guard, web, App, HttpResponse, HttpServer};
 
 pub fn start(domain: String, max_age_secs: i64) -> std::io::Result<Server> {
     Ok(HttpServer::new(move || {
@@ -48,8 +47,15 @@ pub fn start(domain: String, max_age_secs: i64) -> std::io::Result<Server> {
                     .service(web::resource("/start").route(web::post().to_async(api::start)))
                 )
                 .service(web::resource("/services").route(web::get().to_async(api::services)))
+                .default_service(web::resource("")
+                    .route(web::get().to(|| HttpResponse::NotFound()))
+                    .route(web::route()
+                            .guard(guard::Not(guard::Get()))
+                            .to(|| HttpResponse::MethodNotAllowed()),
+                ))
             )
             .service(fs::Files::new("/", "./static").index_file("index.html"))
+            .default_service(web::get().to(api::fallback))
     })
     // let ServiceController handle signals
     // .disable_signals()

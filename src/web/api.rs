@@ -5,8 +5,9 @@ use crate::handler::user::UserService;
 use crate::messages::*;
 use crate::web::models::*;
 use actix::prelude::*;
+use actix_files as fs;
 use actix_identity::*;
-use actix_web::{error::ResponseError, web, Error, HttpResponse};
+use actix_web::{error::ResponseError, web, Error, HttpRequest, HttpResponse};
 use futures::future::{err, ok, Either};
 use nanoid;
 
@@ -64,6 +65,10 @@ macro_rules! check_perm {
             Either::B(ok(UserError::InvalidSession.error_response()))
         }
     };
+}
+
+pub fn fallback(_: HttpRequest) -> actix_web::Result<fs::NamedFile> {
+    Ok(fs::NamedFile::open("static/index.html")?)
 }
 
 pub fn user_list(id: Identity) -> impl Future<Item = HttpResponse, Error = Error> {
