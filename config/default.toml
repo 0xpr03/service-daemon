@@ -1,4 +1,4 @@
-# not yet implemented, would only be for remote DB
+# not yet implemented, only for remote DB
 # currently using local DB
 #[database]
 #url = "root@localhost/test"
@@ -16,7 +16,7 @@ domain = "localhost"
 max_session_age_secs = 86400
 
 [[services]]
-# ID is required to allow services to run accross reloads
+# ID is required to bind user permissions
 id = 0
 enabled = true
 name = "mc-server"
@@ -27,7 +27,9 @@ args = ["-jar","forge-1.12.2-14.23.5.2836-universal.jar","nogui"]
 # send to process for soft-stop
 soft_stop = "stop"
 # restart on crash
-restart = false
+restart = true
+# restart also on signal code 0 (no crash)
+restart_always = true
 
 [[services]]
 id = 1

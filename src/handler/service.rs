@@ -154,13 +154,18 @@ impl Handler<ServiceStateChanged> for ServiceController {
     type Result = ();
     fn handle(&mut self, msg: ServiceStateChanged, ctx: &mut Context<Self>) {
         if let Some(instance) = self.services.get(&msg.id) {
-            if instance.model.restart
-                && !msg.running
-                && instance.state.get_state() == State::Crashed
-            {
-                ctx.address().do_send(StartService {
-                    id: instance.model.id,
-                });
+            if !msg.running {
+                let mut restart =
+                    instance.model.restart && instance.state.get_state() == State::Crashed;
+                if instance.model.restart_always && instance.state.get_state() == State::Ended {
+                    restart = true;
+                }
+
+                if restart {
+                    ctx.address().do_send(StartService {
+                        id: instance.model.id,
+                    });
+                }
             }
         }
     }

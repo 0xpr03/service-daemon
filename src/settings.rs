@@ -47,13 +47,17 @@ pub struct Database {
 pub struct Service {
     pub id: SID,
     pub name: String,
+    #[serde(default)]
     pub restart: bool,
+    #[serde(default)]
     pub autostart: bool,
     pub enabled: bool,
     pub command: String,
     pub directory: String,
     pub args: Vec<String>,
     pub soft_stop: Option<String>,
+    #[serde(default)]
+    pub restart_always: bool,
 }
 
 impl Settings {
@@ -129,6 +133,7 @@ mod tests {
                 Service {
                     name: "some service".to_owned(),
                     autostart: true,
+                    restart_always: false,
                     enabled: false,
                     command: "some cmd".to_owned(),
                     directory: "/foo".to_owned(),
@@ -141,6 +146,7 @@ mod tests {
                     name: "some service2".to_owned(),
                     autostart: false,
                     enabled: false,
+                    restart_always: true,
                     command: "some cmd2".to_owned(),
                     directory: "/foobar".to_owned(),
                     soft_stop: Some("asdf".to_owned()),
