@@ -481,7 +481,10 @@ impl Instance {
                 let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
                 match res {
                     Ok(state) => {
+                        #[cfg(target_family = "unix")]
                         let code_formated = sysexit::from_status(state.clone());
+                        #[cfg(target_family = "windows")]
+                        let code_formated = "";
                         buffer_w.push_back(LogType::State(
                             format!("Process ended with signal {}({:?})", state, code_formated)
                                 .into_bytes(),
