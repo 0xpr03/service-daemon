@@ -2,3 +2,4 @@
 **/*.rs.bk
 /frontend/
 /db.sled/
+/.vscode/

@@ -309,8 +309,6 @@ impl Handler<LogoutUser> for UserService {
 
     fn handle(&mut self, msg: LogoutUser, _ctx: &mut Context<Self>) -> Self::Result {
         DB.set_login(&msg.session, None)?;
-
-        warn!("Not handling websocket!");
         //TODO: kick from websocket
         Ok(())
     }

@@ -11,12 +11,13 @@ use actix_web::middleware::Logger;
 use actix_web::{guard, web, App, HttpResponse, HttpServer};
 
 pub fn start(domain: String, max_age_secs: i64) -> std::io::Result<Server> {
+    //TODO: add CORS
     Ok(HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
             .wrap(IdentityService::new(
                 CookieIdentityPolicy::new(&[0; 32])
-                    .name("my-auth-cookie")
+                    .name("sc-auth")
                     .same_site(SameSite::Strict)
                     // #[cfg(not(debug_assertions))]
                     // .domain(domain.as_str())

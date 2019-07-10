@@ -5,13 +5,14 @@
 Process controller allowing to start/stop/input processes via your browser, in async Rust.
 
 - [ ] Web Interface
-- [ ] 2FA Authentification
+- [X] 2FA Authentification
 - [X] Autostart
 - [X] Stdout & Stderr
 - [X] Stdin control
 - [X] Start/Stop
 - [X] Auto-Restart
 - [X] View exit codes etc
+- [ ] Command-Preset
 
 ### Why ?
 
@@ -24,5 +25,5 @@ And to monitor new software, unstable services etc.
 - You need 2 factor authentification to sign in.
 - Service configuration (start command, parameters..) are not configurable from the web-interface, only via config files.  
   This has some usability drawbacks but decreases the attack surface drastically.
-- You can decide to allow only stdout-inspection or certain commands (not yet implemented).
+- You can disable stdin globally for a service.
 - It's written in rust, making it more resiliant to typical buffer overflows.
