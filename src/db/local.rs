@@ -341,12 +341,14 @@ impl super::DBInterface for DB {
 
     fn delete_old_logins(&self, max_age: u32) -> Result<usize> {
         let mut deleted = 0;
-        let tree = self.open_tree(tree::REL_LOGIN_SEEN)?;
-        for val in tree.iter() {
+        let tree_rel = self.open_tree(tree::REL_LOGIN_SEEN)?;
+        let tree_logins = self.open_tree(tree::LOGINS)?;
+        for val in tree_rel.iter() {
             let (session, time) = val?;
             let time: u64 = deserialize(&time)?;
             if super::get_current_time() - time > max_age as u64 {
-                tree.del(session)?;
+                tree_rel.del(&session)?;
+                tree_logins.del(session)?;
                 deleted += 1;
             }
         }
