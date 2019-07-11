@@ -82,16 +82,8 @@ impl UserService {
             name: user.name,
             password_enc: bcrypt_password(&user.password, self.brcypt_cost)?,
         };
-        let v = DB.create_user(user_enc);
-        match v {
-            Err(e) => {
-                if let db::Error::EMailExists(_) = e {
-                    return Err(UserError::EmailInUse);
-                }
-                Err(e.into())
-            }
-            Ok(user) => Ok(CreateUserResp { uid: user.id }),
-        }
+        let user = DB.create_user(user_enc)?;
+        Ok(CreateUserResp { user: user.id })
     }
 }
 
@@ -130,7 +122,7 @@ impl Handler<StartupCheck> for UserService {
                 email: ROOT_EMAIL.to_string(),
             }) {
                 Ok(v) => {
-                    let uid = v.uid;
+                    let uid = v.user;
                     assert_eq!(uid, DB.get_root_id());
                     let end = start.elapsed().as_millis();
 
@@ -338,6 +330,18 @@ impl Handler<CreateUser> for UserService {
         };
         self.check_admin(uid)?;
         self.create_user_unchecked(msg.user)
+    }
+}
+
+impl Handler<SetUserInfo> for UserService {
+    type Result = Result<()>;
+
+    fn handle(&mut self, msg: SetUserInfo, _ctx: &mut Context<Self>) -> Self::Result {
+        let mut user_full = DB.get_user(msg.user.id)?;
+        user_full.name = msg.user.name;
+        user_full.email = msg.user.email;
+        DB.update_user(user_full)?;
+        Ok(())
     }
 }
 

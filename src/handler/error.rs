@@ -34,7 +34,7 @@ impl From<MailboxError> for StartupError {
 
 #[derive(Fail, Debug)]
 pub enum UserError {
-    #[fail(display = "Internal DB error {}", _0)]
+    #[fail(display = "Internal DB error: {}", _0)]
     DBError(db::Error),
     #[fail(display = "Error with password hashing! {}", _0)]
     HashError(#[cause] BcryptError),
@@ -53,9 +53,11 @@ pub enum UserError {
 impl ResponseError for UserError {
     fn error_response(&self) -> HttpResponse {
         match self {
+            UserError::EmailInUse => HttpResponse::Conflict().json("email_claimed"),
             UserError::InvalidPermissions => HttpResponse::Unauthorized().json("unauthorized"),
             UserError::InvalidSession => HttpResponse::Unauthorized().json("invalid_session"),
-            _ => {
+            v => {
+                error!("{}", v);
                 HttpResponse::InternalServerError().json("Internal Server Error, Please try later")
             }
         }
@@ -69,7 +71,10 @@ impl From<bcrypt::BcryptError> for UserError {
 }
 impl From<db::Error> for UserError {
     fn from(error: db::Error) -> Self {
-        UserError::DBError(error)
+        match error {
+            db::Error::EMailExists => UserError::EmailInUse,
+            v => UserError::DBError(v),
+        }
     }
 }
 
@@ -95,11 +100,11 @@ pub enum ControllerError {
     ServiceRunning,
     #[fail(display = "Pipe to process is broken! This is an bug!")]
     BrokenPipe,
-    #[fail(display = "Error when accessing UserController {}", _0)]
+    #[fail(display = "Error when accessing UserController: {}", _0)]
     UserError(#[cause] UserError),
     #[fail(display = "Error when accessing resource: {}", _0)]
     SendError(#[cause] MailboxError),
-    #[fail(display = "Internal DB error {}", _0)]
+    #[fail(display = "Internal DB error: {}", _0)]
     DBError(db::Error),
 }
 
@@ -135,7 +140,7 @@ impl ResponseError for ControllerError {
             }
             ControllerError::BrokenPipe => HttpResponse::InternalServerError().body("Broken pipe!"),
             v => {
-                error!("Controller error {}!", v);
+                error!("{}", v);
                 HttpResponse::InternalServerError().body("Internal Server Error, Please try later")
             }
         }

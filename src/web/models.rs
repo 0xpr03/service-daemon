@@ -1,6 +1,6 @@
 use crate::crypto;
 use crate::db::models as dbmodels;
-pub use crate::db::models::{Session, SID, UID};
+pub use crate::db::models::{ServicePerm, Session, SID, UID};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
@@ -43,10 +43,22 @@ impl From<dbmodels::TOTP> for TOTP {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ServicePermWrap {
+    pub perms: u32,
+}
+
 #[derive(Debug, Serialize)]
 pub struct UserMin {
     pub name: String,
     pub id: UID,
+    pub email: String,
+}
+
+/// json data fragment for SetUserInfo
+#[derive(Debug, Deserialize)]
+pub struct UserMinData {
+    pub name: String,
     pub email: String,
 }
 
@@ -83,5 +95,5 @@ pub type TOTPValue = u64;
 
 #[derive(Debug, Serialize)]
 pub struct CreateUserResp {
-    pub uid: UID,
+    pub user: UID,
 }

@@ -94,17 +94,13 @@ bitflags! {
     #[derive(Serialize, Deserialize)]
     pub struct ServicePerm: u32 {
         /// Start service
-        const START = 0b00000001;
+        const START  = 0b00000001;
         /// Stop service
-        const STOP  = 0b00000010;
+        const STOP   = 0b00000010;
         /// Stdin write all
         const STDIN_ALL = 0b00000100;
-        /// Stdin write specific commands
-        const STDIN = 0b00001000;
-        /// Stdout inspect
-        const STDOUT = 0b00010000;
-        /// Stderr inspect
-        const STDERR = 0b00100000;
+        /// Output inspect
+        const OUTPUT = 0b00001000;
     }
 }
 

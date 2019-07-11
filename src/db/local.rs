@@ -133,8 +133,7 @@ impl DB {
         })
     }
 
-    /// Generate ID and check that it's not in use currently.  
-    /// target_db is the DB to check against
+    /// Generate ID and check that it's not in use currently.
     fn gen_user_id_secure(&self) -> Result<UID> {
         let max = 100;
         for _ in 0..max {
@@ -152,12 +151,6 @@ impl DB {
     /// Check if id is valid (taken)
     fn is_valid_uid(&self, id: &UID) -> Result<bool> {
         Ok(self.open_tree(tree::USER)?.contains_key(ser!(id))?)
-    }
-    /// Check if mail is taken
-    fn is_mail_taken(&self, mail: &str) -> Result<bool> {
-        Ok(self
-            .open_tree(tree::REL_MAIL_UID)?
-            .contains_key(ser!(mail))?)
     }
     /// Inner function to simulate transaction
     fn create_user_inner(&self, new_user: NewUserEnc, id: UID) -> Result<FullUser> {
@@ -201,7 +194,7 @@ impl super::DBInterface for DB {
                 }
             })?;
         if claimed.is_some() {
-            return Err(super::Error::EMailExists(new_user.email));
+            return Err(super::Error::EMailExists);
         }
         // first get ID, otherwise release lock
         let id = match self.gen_user_id_secure() {
@@ -360,12 +353,21 @@ impl super::DBInterface for DB {
             return Err(super::Error::InvalidUser(user.id).into());
         }
         let old_email = self.get_user(user.id)?.email;
-        self.open_tree(tree::USER)?.set(ser!(user.id), ser!(user))?;
-        let tree = self.open_tree(tree::REL_MAIL_UID)?;
         if old_email != user.email {
-            tree.del(ser!(old_email))?;
-            tree.set(ser!(user.email), ser!(user.id))?;
+            debug!("old mail != new mail");
+            let tree = self.open_tree(tree::REL_MAIL_UID)?;
+            match tree.cas(ser!(user.email), None as Option<&[u8]>, Some(ser!(user.id)))? {
+                Err(_) => {
+                    return Err(super::Error::EMailExists);
+                }
+                Ok(_) => {
+                    debug!("{} not in use", user.email);
+                    tree.del(ser!(old_email))?;
+                }
+            }
         }
+        self.open_tree(tree::USER)?.set(ser!(user.id), ser!(user))?;
+
         Ok(())
     }
 

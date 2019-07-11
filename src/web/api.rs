@@ -83,7 +83,7 @@ pub fn user_list(id: Identity) -> impl Future<Item = HttpResponse, Error = Error
     })
 }
 
-pub fn user_info(
+pub fn get_user_info(
     item: web::Path<UserRequest>,
     id: Identity,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
@@ -93,6 +93,29 @@ pub fn user_info(
             .map_err(Error::from)
             .map(move |res| match res {
                 Ok(v) => HttpResponse::Ok().json(v),
+                Err(e) => e.error_response(),
+            })
+    })
+}
+
+pub fn set_user_info(
+    item: web::Path<UserRequest>,
+    data: web::Json<UserMinData>,
+    id: Identity,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    check_admin!(id.identity(), move || {
+        let data = data.into_inner();
+        UserService::from_registry()
+            .send(unchecked::SetUserInfo {
+                user: UserMin {
+                    id: item.user,
+                    name: data.name,
+                    email: data.email,
+                },
+            })
+            .map_err(Error::from)
+            .map(move |res| match res {
+                Ok(_) => HttpResponse::NoContent().finish(),
                 Err(e) => e.error_response(),
             })
     })
@@ -114,7 +137,7 @@ pub fn delete_user(
                     })
                     .map_err(Error::from)
                     .map(move |res| match res {
-                        Ok(_) => HttpResponse::Ok().finish(),
+                        Ok(_) => HttpResponse::NoContent().finish(),
                         Err(e) => e.error_response(),
                     }),
             )
@@ -148,19 +171,20 @@ pub fn create_user(
 
 pub fn set_service_permission(
     item: web::Path<PermRequest>,
-    data: web::Path<ServicePerm>,
+    data: web::Json<ServicePermWrap>,
     id: Identity,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
+    trace!("Setting service permission {:?}", data);
     check_admin!(id.identity(), move || {
         UserService::from_registry()
             .send(unchecked::SetServicePermUser {
                 service: item.service,
                 user: item.user,
-                perm: data.into_inner(),
+                perm: ServicePerm::from_bits_truncate(data.into_inner().perms),
             })
             .map_err(Error::from)
             .map(move |res| match res {
-                Ok(_) => HttpResponse::Ok().finish(),
+                Ok(_) => HttpResponse::NoContent().finish(),
                 Err(e) => e.error_response(),
             })
     })
@@ -178,7 +202,9 @@ pub fn get_service_permission(
             })
             .map_err(Error::from)
             .map(move |res| match res {
-                Ok(perms) => HttpResponse::Ok().json(perms),
+                Ok(perms) => HttpResponse::Ok().json(ServicePermWrap {
+                    perms: perms.bits(),
+                }),
                 Err(e) => e.error_response(),
             })
     })
@@ -204,6 +230,7 @@ pub fn state(
     id: Identity,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     let service = item.into_inner().service;
+    //TODO: allow any permission
     check_perm!(id.identity(), service, ServicePerm::STOP, move || {
         ServiceController::from_registry()
             .send(unchecked::GetServiceState { id: service })
@@ -229,7 +256,7 @@ pub fn input(
             })
             .map_err(Error::from)
             .map(|response| match response {
-                Ok(()) => HttpResponse::Ok().finish(),
+                Ok(()) => HttpResponse::NoContent().finish(),
                 Err(e) => e.error_response(),
             })
     })
@@ -245,7 +272,7 @@ pub fn start(
             .send(unchecked::StartService { id: service })
             .map_err(Error::from)
             .map(|response| match response {
-                Ok(()) => HttpResponse::Ok().finish(),
+                Ok(()) => HttpResponse::NoContent().finish(),
                 Err(e) => e.error_response(),
             })
     })
@@ -261,7 +288,7 @@ pub fn stop(
             .send(unchecked::StopService { id: service })
             .map_err(Error::from)
             .map(|response| match response {
-                Ok(()) => HttpResponse::Ok().finish(),
+                Ok(()) => HttpResponse::NoContent().finish(),
                 Err(e) => e.error_response(),
             })
     })
@@ -276,10 +303,7 @@ pub fn logout(id: Identity) -> impl Future<Item = HttpResponse, Error = Error> {
                 .map_err(Error::from)
                 .map(|resp| match resp {
                     Ok(_) => HttpResponse::Accepted().json(true),
-                    Err(e) => {
-                        warn!("Logout: {}", e);
-                        e.error_response()
-                    }
+                    Err(e) => e.error_response(),
                 }),
         )
     } else {
@@ -302,10 +326,7 @@ fn login_core(session: String, data: Login) -> impl Future<Item = HttpResponse, 
                 LoginState::RequiresTOTP => HttpResponse::Accepted().json(v),
                 LoginState::RequiresTOTPSetup(_) => HttpResponse::Accepted().json(v),
             },
-            Err(e) => {
-                warn!("Login-core: {}", e);
-                e.error_response()
-            }
+            Err(e) => e.error_response(),
         })
 }
 
@@ -392,7 +413,7 @@ pub fn output(
     id: Identity,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     let service = item.into_inner().service;
-    check_perm!(id.identity(), service, ServicePerm::STDOUT, move || {
+    check_perm!(id.identity(), service, ServicePerm::OUTPUT, move || {
         ServiceController::from_registry()
             .send(unchecked::GetOutput { id: service })
             .map_err(Error::from)

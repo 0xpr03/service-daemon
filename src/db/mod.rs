@@ -1,10 +1,10 @@
-#[cfg(feature = "sled")]
+#[cfg(feature = "local")]
 mod local;
 pub mod models;
 use local::{DBError, DB as InnerDB};
-#[cfg(feature = "mysql")]
+#[cfg(feature = "remote")]
 mod remote;
-#[cfg(feature = "mysql")]
+#[cfg(feature = "remote")]
 use remote::{DBError, DB as InnerDB};
 
 use crate::web::models::*;
@@ -19,8 +19,8 @@ pub enum Error {
     InternalError(DBError),
     #[fail(display = "The specified user id {} is invalid!", _0)]
     InvalidUser(UID),
-    #[fail(display = "User mail {} exists already!", _0)]
-    EMailExists(String),
+    #[fail(display = "User mail exists already!")]
+    EMailExists,
 }
 
 impl From<DBError> for Error {
@@ -99,14 +99,19 @@ compile_error!("Either feature \"local\" or \"remote\" must be enabled for this 
 mod test {
     use super::*;
     use rand::{thread_rng, RngCore};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::thread::sleep;
     use std::time::Duration;
+
+    static USER_UNIQUE: AtomicUsize = AtomicUsize::new(0);
+
     fn gen_user() -> NewUserEnc {
         let r = thread_rng().next_u32();
+        let id = USER_UNIQUE.fetch_add(1, Ordering::SeqCst);
         NewUserEnc {
-            name: format!("Name{}", r),
-            password_enc: format!("Password{}", r),
-            email: format!("Email{}", r),
+            name: format!("{}Name{}", id, r),
+            password_enc: format!("{}Password{}", id, r),
+            email: format!("{}Email{}", id, r),
         }
     }
     fn gen_db() -> InnerDB {
@@ -114,6 +119,7 @@ mod test {
         assert_eq!(0, db.get_users().unwrap().len());
         db
     }
+    /// creates a user and returns full representation
     fn create_user(db: &InnerDB) -> (NewUserEnc, FullUser) {
         let user_new = gen_user();
         let full_user = db.create_user(user_new.clone()).unwrap();
@@ -168,6 +174,33 @@ mod test {
             Some(full_user.id),
             db.get_id_by_email(&user_updated.email).unwrap()
         );
+    }
+
+    #[test]
+    fn test_update_email_duplicate() {
+        let db = gen_db();
+        let (_, full_user) = create_user(&db);
+        let (_, mut other_user) = create_user(&db);
+        other_user.email = full_user.email;
+        match db.update_user(other_user) {
+            Err(Error::EMailExists) => (),
+            v => panic!("Expected EmailExists, got {:?}",v),
+        }
+    }
+
+    #[test]
+    fn test_createion_email_duplicate() {
+        let db = gen_db();
+        let (_, full_user) = create_user(&db);
+        let new_user = NewUserEnc {
+            name: "something".to_string(),
+            password_enc: "asdf".to_string(),
+            email: full_user.email,
+        };
+        match db.create_user(new_user) {
+            Err(Error::EMailExists) => (),
+            v => panic!("Expected EmailExists, got {:?}",v),
+        }
     }
 
     #[test]
@@ -271,7 +304,7 @@ mod test {
     fn test_perm_service() {
         let db = gen_db();
         let (_, full_user) = create_user(&db);
-        let perm = ServicePerm::from_bits(0b00111010).unwrap();
+        let perm = ServicePerm::from_bits(0b00001010).unwrap();
         db.set_perm_service(full_user.id, 1, perm.clone()).unwrap();
         assert_eq!(perm, db.get_perm_service(full_user.id, 1).unwrap());
     }

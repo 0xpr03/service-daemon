@@ -14,18 +14,21 @@ pub struct ServiceState {
     pub uptime: u64,
 }
 
+/// Minimal service representation
 #[derive(Serialize)]
 pub struct ServiceMin {
     pub id: SID,
     pub name: String,
 }
 
+/// Check session for login state
 #[derive(Message)]
 #[rtype(result = "Result<LoginState, UserError>")]
 pub struct CheckSession {
     pub session: Session,
 }
 
+/// Login user - password step
 #[derive(Message)]
 #[rtype(result = "Result<LoginState, UserError>")]
 pub struct LoginUser {
@@ -34,6 +37,7 @@ pub struct LoginUser {
     pub session: Session,
 }
 
+/// Login user - 2FA step
 #[derive(Message)]
 #[rtype(result = "Result<LoginState, UserError>")]
 pub struct LoginTOTP {
@@ -41,6 +45,7 @@ pub struct LoginTOTP {
     pub totp: u64,
 }
 
+/// Logout user
 #[derive(Message)]
 #[rtype(result = "Result<(), UserError>")]
 pub struct LogoutUser {
@@ -63,6 +68,7 @@ pub struct DeleteUser {
     pub user: UID,
 }
 
+/// Get services of session, internal
 #[derive(Message)]
 #[rtype(result = "Result<Vec<SID>, UserError>")]
 pub struct GetSessionServiceIDs {
@@ -116,7 +122,8 @@ pub mod unchecked {
     use super::*;
     use std::collections::HashMap;
 
-    /// **Unchecked!** Set permissions of user for service, for administration
+    /// **Unchecked!** Set permissions of user for service  
+    /// For administration
     #[derive(Message)]
     #[rtype(result = "Result<(), UserError>")]
     pub struct SetServicePermUser {
@@ -125,7 +132,8 @@ pub mod unchecked {
         pub perm: ServicePerm,
     }
 
-    /// **Unchecked!** Get permissions of user for service, for administration
+    /// **Unchecked!** Get permissions of user for service  
+    /// For administration
     #[derive(Message)]
     #[rtype(result = "Result<ServicePerm, UserError>")]
     pub struct GetServicePermUser {
@@ -141,7 +149,8 @@ pub mod unchecked {
         pub input: String,
     }
 
-    /// **Unchecked!** send stdin to service
+    /// **Unchecked!** internal, set password cost for future passwords  
+    /// For startup
     #[derive(Message)]
     pub struct SetPasswordCost {
         pub cost: u32,
@@ -175,35 +184,39 @@ pub mod unchecked {
         pub id: SID,
     }
 
-    /// **Unchecked!** internal
+    /// **Unchecked!** internal, signal service state change  
+    /// For service internal use.
     #[derive(Message)]
     pub struct ServiceStateChanged {
         pub id: SID,
         pub running: bool,
     }
 
-    /// **Unchecked!** internal
+    /// **Unchecked!** internal, startup check  
+    /// For startup
     #[derive(Message)]
     #[rtype(result = "Result<(), UserError>")]
     pub struct StartupCheck {}
 
-    /// **Unchecked!** internal
+    /// **Unchecked!** internal, load services  
+    /// For startup
     #[derive(Message)]
     pub struct LoadServices {
         pub data: Vec<Service>,
     }
 
-    /// **Unchecked!** get all services
+    /// **Unchecked!** get all service SIDs  
+    /// For administration
     #[derive(Message)]
     #[rtype(result = "Result<Vec<SID>, ControllerError>")]
     pub struct GetServiceIDs {}
 
-    /// **Unchecked!** get all services as min representation
+    /// **Unchecked!** get all services as ServiceMin representation
     #[derive(Message)]
     #[rtype(result = "Result<Vec<ServiceMin>, ControllerError>")]
     pub struct GetAllServicesMin {}
 
-    /// **Unchecked!** get all services as min representation
+    /// **Unchecked!** get all users as UserMin representation
     #[derive(Message)]
     #[rtype(result = "Result<Vec<UserMin>, UserError>")]
     pub struct GetAllUsers {}
@@ -215,6 +228,7 @@ pub mod unchecked {
         pub user: UID,
     }
 
+    /// Minimal service permission representation
     #[derive(Serialize)]
     pub struct SPMin {
         pub id: SID,
@@ -222,10 +236,19 @@ pub mod unchecked {
         pub has_perm: bool,
     }
 
-    /// **Unchecked!** get all SIDs with the permissions of the specified user
+    /// **Unchecked!** get user info  
+    /// For administration
     #[derive(Message)]
     #[rtype(result = "Result<UserMin, UserError>")]
     pub struct GetUserInfo {
         pub user: UID,
+    }
+
+    /// **Unchecked!** set user info  
+    /// For administration
+    #[derive(Message)]
+    #[rtype(result = "Result<(), UserError>")]
+    pub struct SetUserInfo {
+        pub user: UserMin,
     }
 }
