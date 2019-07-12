@@ -1,45 +1,33 @@
+use super::error::ControllerError;
+use crate::db::{DBInterface, DB};
+use crate::handler::user::UserService;
+use crate::messages::unchecked::*;
 use crate::messages::*;
 use crate::settings::Service;
+use crate::web::models::SID;
 
+use actix::fut::{err, ok, Either};
 use actix::prelude::*;
 use actix::spawn;
 use arraydeque::{ArrayDeque, Wrapping};
 use failure::Fallible;
 use metrohash::MetroHashMap;
-use tokio_codec::{Encoder, FramedWrite};
+use serde::Serialize;
+use strip_ansi_escapes as ansi_esc;
 use tokio_io::io::write_all;
-use tokio_process::{Child, ChildStdin, CommandExt};
+use tokio_process::CommandExt;
 
-use futures::sync::mpsc::TrySendError;
 use futures::{self, Future, Stream};
 
+use std::collections::{HashMap, HashSet};
 use std::io;
-use std::io::Write;
 use std::process::{Command, Stdio};
 use std::sync::atomic::Ordering;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::{Arc, RwLock};
 
-#[derive(Fail, Debug)]
-pub enum ControllerError {
-    #[fail(display = "Failed to load services from data, services already loaded!")]
-    ServicesNotEmpty,
-    #[fail(display = "Invalid instance ID: {}", _0)]
-    InvalidInstance(usize),
-    #[fail(display = "Unable to start, IO error: {}", _0)]
-    StartupIOError(::std::io::Error),
-    #[fail(display = "Service is stopped!")]
-    ServiceStopped,
-    #[fail(display = "Unable to execute, missing service handles! This is an bug!")]
-    NoServiceHandle,
-    #[fail(display = "Service already running!")]
-    ServiceRunning,
-    #[fail(display = "Pipe to process is broken! This is an bug!")]
-    BrokenPipe,
-}
-
 pub struct ServiceController {
-    services: MetroHashMap<usize, LoadedService>,
+    services: MetroHashMap<SID, LoadedService>,
 }
 
 impl Default for ServiceController {
@@ -48,6 +36,13 @@ impl Default for ServiceController {
             services: MetroHashMap::default(),
         }
     }
+}
+
+fn get_system_time_64() -> u64 {
+    ::std::time::SystemTime::now()
+        .duration_since(::std::time::UNIX_EPOCH)
+        .expect("Invalid SystemTime!")
+        .as_secs()
 }
 
 impl SystemService for ServiceController {}
@@ -70,11 +65,11 @@ impl ServiceController {
 impl Actor for ServiceController {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Context<Self>) {
+    fn started(&mut self, _ctx: &mut Context<Self>) {
         debug!("ServiceController is alive");
     }
 
-    fn stopped(&mut self, ctx: &mut Context<Self>) {
+    fn stopped(&mut self, _ctx: &mut Context<Self>) {
         info!("ServiceController is stopped");
     }
 }
@@ -111,7 +106,7 @@ impl Handler<SendStdin> for ServiceController {
                 return Err(ControllerError::ServiceStopped.into());
             }
             if let Some(stdin) = service.stdin.as_mut() {
-                match stdin.try_send(msg.input) {
+                match stdin.try_send(format!("{}\n", msg.input)) {
                     Ok(()) => return Ok(()),
                     Err(e) => {
                         warn!("Unable to send message to {} {}", service.model.name, e);
@@ -159,20 +154,25 @@ impl Handler<ServiceStateChanged> for ServiceController {
     type Result = ();
     fn handle(&mut self, msg: ServiceStateChanged, ctx: &mut Context<Self>) {
         if let Some(instance) = self.services.get(&msg.id) {
-            if instance.model.restart
-                && !msg.running
-                && instance.state.get_state() == State::Crashed
-            {
-                ctx.address().do_send(StartService {
-                    id: instance.model.id,
-                });
+            if !msg.running {
+                let mut restart =
+                    instance.model.restart && instance.state.get_state() == State::Crashed;
+                if instance.model.restart_always && instance.state.get_state() == State::Ended {
+                    restart = true;
+                }
+
+                if restart {
+                    ctx.address().do_send(StartService {
+                        id: instance.model.id,
+                    });
+                }
             }
         }
     }
 }
 
 impl Handler<GetOutput> for ServiceController {
-    type Result = Result<String, ControllerError>;
+    type Result = Result<Vec<LogType<String>>, ControllerError>;
 
     fn handle(&mut self, msg: GetOutput, _ctx: &mut Context<Self>) -> Self::Result {
         if let Some(instance) = self.services.get(&msg.id) {
@@ -180,21 +180,12 @@ impl Handler<GetOutput> for ServiceController {
             let msg = tty_r
                 .iter()
                 .map(|s| match s {
-                    MessageType::State(s) => {
-                        format!("STATE: {}", String::from_utf8_lossy(&s).into_owned())
-                    }
-                    MessageType::Stderr(s) => {
-                        format!("STDERR: {}", String::from_utf8_lossy(&s).into_owned())
-                    }
-                    MessageType::Stdout(s) => {
-                        format!("STDOUT: {}", String::from_utf8_lossy(&s).into_owned())
-                    }
-                    MessageType::Stdin(s) => {
-                        format!("STDIN: {}", String::from_utf8_lossy(&s).into_owned())
-                    }
+                    LogType::State(s) => LogType::State(String::from_utf8_lossy(&s).into_owned()),
+                    LogType::Stderr(s) => LogType::Stderr(String::from_utf8_lossy(&s).into_owned()),
+                    LogType::Stdout(s) => LogType::Stdout(String::from_utf8_lossy(&s).into_owned()),
+                    LogType::Stdin(s) => LogType::Stdin(String::from_utf8_lossy(&s).into_owned()),
                 })
                 .collect::<Vec<_>>();
-            let msg: String = msg.join("\n");
             Ok(msg)
         } else {
             Err(ControllerError::InvalidInstance(msg.id).into())
@@ -202,19 +193,106 @@ impl Handler<GetOutput> for ServiceController {
     }
 }
 
-impl Handler<GetServices> for ServiceController {
-    type Result = Result<Vec<ServiceMin>, ControllerError>;
+impl Handler<GetUserServicePermsAll> for ServiceController {
+    type Result = Result<HashMap<SID, SPMin>, ControllerError>;
 
-    fn handle(&mut self, _msg: GetServices, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: GetUserServicePermsAll, _ctx: &mut Context<Self>) -> Self::Result {
+        let mut data = HashMap::with_capacity(self.services.len());
+        self.services.iter().for_each(|(k, v)| {
+            data.insert(
+                k.clone(),
+                SPMin {
+                    id: k.clone(),
+                    name: v.model.name.clone(),
+                    has_perm: false,
+                },
+            );
+        });
+        DB.get_all_perm_service(msg.user)?
+            .iter()
+            .for_each(|(k, v)| {
+                if let Some(mut entry) = data.get_mut(k) {
+                    entry.has_perm = !v.is_empty();
+                }
+            });
+        Ok(data)
+    }
+}
+
+impl Handler<GetServiceIDs> for ServiceController {
+    type Result = Result<Vec<SID>, ControllerError>;
+
+    fn handle(&mut self, _msg: GetServiceIDs, _ctx: &mut Context<Self>) -> Self::Result {
+        Ok(self.services.values().map(|v| v.model.id.clone()).collect())
+    }
+}
+
+impl Handler<GetSessionServices> for ServiceController {
+    type Result = ResponseActFuture<Self, Vec<ServiceState>, ControllerError>;
+    // kind of breaks separation of concerns, but to make this performant we'll have to call UserService from here
+    fn handle(&mut self, msg: GetSessionServices, _ctx: &mut Context<Self>) -> Self::Result {
+        let fut = UserService::from_registry()
+            .send(GetSessionServiceIDs {
+                session: msg.session,
+            })
+            .map_err(ControllerError::from);
+        let fut = actix::fut::wrap_future::<_, Self>(fut);
+        let fut = fut.and_then(|v, actor, _ctx| {
+            let v = match v.map_err(ControllerError::from) {
+                Err(e) => return Either::B(err(e)),
+                Ok(v) => v,
+            };
+            let mut services = HashSet::with_capacity(v.len());
+            services.extend(v);
+
+            Either::A(ok(actor
+                .services
+                .values()
+                .filter_map(|v| {
+                    if services.contains(&v.model.id) {
+                        Some(ServiceState {
+                            id: v.model.id,
+                            name: v.model.name.clone(),
+                            state: v.state.get_state(),
+                            uptime: v.uptime(),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect()))
+        });
+        Box::new(fut)
+    }
+}
+
+impl Handler<GetAllServicesMin> for ServiceController {
+    type Result = Result<Vec<ServiceMin>, ControllerError>;
+    fn handle(&mut self, _msg: GetAllServicesMin, _ctx: &mut Context<Self>) -> Self::Result {
         Ok(self
             .services
             .values()
             .map(|v| ServiceMin {
                 id: v.model.id,
                 name: v.model.name.clone(),
-                running: v.running.load(Ordering::Relaxed),
             })
             .collect())
+    }
+}
+
+impl Handler<GetServiceState> for ServiceController {
+    type Result = Result<ServiceState, ControllerError>;
+    fn handle(&mut self, msg: GetServiceState, _ctx: &mut Context<Self>) -> Self::Result {
+        if let Some(v) = self.services.get(&msg.id) {
+            Ok(ServiceState {
+                id: msg.id,
+                name: v.model.name.clone(),
+                state: v.state.get_state(),
+                uptime: v.uptime(),
+            })
+        } else {
+            Err(ControllerError::InvalidInstance(msg.id))
+        }
     }
 }
 
@@ -237,25 +315,27 @@ impl Handler<LoadServices> for ServiceController {
     }
 }
 
-pub type LoadedService = Instance;
+type LoadedService = Instance;
 
 struct Instance {
     model: Service,
     running: Arc<AtomicBool>,
-    tty: Arc<RwLock<ArrayDeque<[MessageType; 200], Wrapping>>>,
+    tty: Arc<RwLock<ArrayDeque<[LogType<Vec<u8>>; 2048], Wrapping>>>,
     state: StateFlag,
     stop_channel: Option<futures::sync::oneshot::Sender<()>>,
     stdin: Option<futures::sync::mpsc::Sender<String>>,
+    start_time: Option<u64>,
 }
 
-pub enum MessageType {
-    Stdin(Vec<u8>),
-    Stdout(Vec<u8>),
-    Stderr(Vec<u8>),
-    State(Vec<u8>),
+#[derive(Serialize)]
+pub enum LogType<T> {
+    Stdin(T),
+    Stdout(T),
+    Stderr(T),
+    State(T),
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Serialize)]
 pub enum State {
     Stopped = 0,
     Running = 1,
@@ -299,6 +379,11 @@ impl From<usize> for State {
 }
 
 impl Instance {
+    fn uptime(&self) -> u64 {
+        self.start_time
+            .as_ref()
+            .map_or(0, |v| get_system_time_64() - v)
+    }
     fn run(&mut self, addr: Addr<ServiceController>) -> Result<(), ::std::io::Error> {
         if self.model.enabled
             && !self
@@ -308,7 +393,7 @@ impl Instance {
             trace!("Starting {}", self.model.name);
             {
                 let mut buffer_w = self.tty.write().expect("Can't write buffer!");
-                buffer_w.push_back(MessageType::State(
+                buffer_w.push_back(LogType::State(
                     format!("Starting {}", self.model.name).into_bytes(),
                 ));
                 drop(buffer_w);
@@ -323,6 +408,7 @@ impl Instance {
             cmd.stdin(Stdio::piped());
             self.state.set_state(State::Running);
             let mut child = cmd.spawn_async()?;
+            self.start_time = Some(get_system_time_64());
 
             addr.do_send(ServiceStateChanged {
                 id: self.model.id,
@@ -344,14 +430,14 @@ impl Instance {
                     write_all(stdin, bytes)
                         .map(move |(stdin, res)| {
                             let mut buffer_w = buffer_c2.write().expect("Can't write buffer!");
-                            buffer_w.push_back(MessageType::Stdin(res));
+                            buffer_w.push_back(LogType::Stdin(res));
 
                             stdin
                         })
                         .map_err(move |e| {
                             error!("Couldn't write to stdin of {}: {}", service_info, e);
                             let mut buffer_w = buffer_c3.write().expect("Can't write buffer!");
-                            buffer_w.push_back(MessageType::State(
+                            buffer_w.push_back(LogType::State(
                                 format!("Couldn't write to stdout! \"{}\"", msg).into_bytes(),
                             ));
                             ()
@@ -369,7 +455,7 @@ impl Instance {
             let cycle_stdout = lines
                 .for_each(move |l| {
                     let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
-                    buffer_w.push_back(MessageType::Stdout(l));
+                    buffer_w.push_back(LogType::Stdout(ansi_esc::strip(l).unwrap()));
                     Ok(())
                 })
                 .map_err(|e| {
@@ -385,7 +471,7 @@ impl Instance {
             let cycle_stderr = lines
                 .for_each(move |l| {
                     let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
-                    buffer_w.push_back(MessageType::Stderr(l));
+                    buffer_w.push_back(LogType::Stderr(ansi_esc::strip(l).unwrap()));
                     Ok(())
                 })
                 .map_err(|e| {
@@ -400,8 +486,11 @@ impl Instance {
                 let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
                 match res {
                     Ok(state) => {
+                        #[cfg(target_family = "unix")]
                         let code_formated = sysexit::from_status(state.clone());
-                        buffer_w.push_back(MessageType::State(
+                        #[cfg(target_family = "windows")]
+                        let code_formated = "";
+                        buffer_w.push_back(LogType::State(
                             format!("Process ended with signal {}({:?})", state, code_formated)
                                 .into_bytes(),
                         ));
@@ -415,7 +504,7 @@ impl Instance {
                         Ok(())
                     }
                     Err(e) => {
-                        buffer_w.push_back(MessageType::State(
+                        buffer_w.push_back(LogType::State(
                             format!("Unable to read exit state!").into_bytes(),
                         ));
                         state_c.set_state(State::Crashed);
@@ -431,9 +520,7 @@ impl Instance {
             let child = child
                 .select(rx.map_err(|_| ()).map(move |_| {
                     let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
-                    buffer_w.push_back(MessageType::State(
-                        String::from("Process killed").into_bytes(),
-                    ));
+                    buffer_w.push_back(LogType::State(String::from("Process killed").into_bytes()));
                 }))
                 .then(|_x| Ok(()));
             self.stop_channel = Some(tx);
@@ -470,6 +557,7 @@ impl From<Service> for Instance {
             state: StateFlag::new(State::Stopped),
             stop_channel: None,
             stdin: None,
+            start_time: None,
         }
     }
 }

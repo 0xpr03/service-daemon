@@ -7,43 +7,72 @@ extern crate lazy_static;
 
 use crate::handler::messages;
 use crate::handler::service::ServiceController;
+use crate::handler::user::UserService;
+
 use actix;
 use actix::prelude::*;
-use actix::System;
 use failure::Fallible;
-use tokio_signal::unix::{Signal, SIGINT, SIGTERM};
 
+mod crypto;
 mod db;
 mod handler;
 mod readline;
 mod settings;
 mod web;
+
+const RUST_LOG: &'static str = "RUST_LOG";
+
 fn main() -> Fallible<()> {
+    if std::env::var(RUST_LOG).is_err() {
+        std::env::set_var(
+            RUST_LOG,
+            #[cfg(debug_assertions)]
+            "service_daemon=trace,actix_web=info,actix_server=info",
+            #[cfg(not(debug_assertions))]
+            "service_daemon=info,actix_web=info,actix_server=info",
+        );
+    }
     env_logger::init();
-    let settings = settings::Settings::new()?;
+    let settings = match settings::Settings::new() {
+        Err(e) => {
+            error!("Error parsing configuration: {}", e);
+            return Err(e.into());
+        }
+        Ok(v) => v,
+    };
     trace!("{:#?}", settings);
 
-    System::run(|| {
-        // let sigint = Signal::new(SIGINT).flatten_stream();
-        // let sigterm = Signal::new(SIGTERM).flatten_stream();
+    let sys = actix_rt::System::new("sc-web");
 
-        // // Use the `select` combinator to merge these two streams into one
-        // let stream = sigint.select(sigterm);
-        // let fut = stream
-        //     .for_each(|signal| {
-        //         println!("Received signal {}", signal);
-        //         Ok(())
-        //     })
-        //     .map_err(|_| ());
-        // actix::spawn(fut);
-        let startup = ServiceController::from_registry()
-            .send(messages::LoadServices {
-                data: settings.services,
-            })
-            .map_err(|_| ());
-        actix::spawn(startup);
-        let _ = web::start();
-    })?;
+    // TODO: we can't catch anything except sighub for child processes, hint was to look into daemon(1)
+    // let sigint = Signal::new(SIGINT).flatten_stream();
+    // let sigterm = Signal::new(SIGTERM).flatten_stream();
+
+    // // Use the `select` combinator to merge these two streams into one
+    // let stream = sigint.select(sigterm);
+    // let fut = stream
+    //     .for_each(|signal| {
+    //         println!("Received signal {}", signal);
+    //         Ok(())
+    //     })
+    //     .map_err(|_| ());
+    // actix::spawn(fut);
+    let startup = ServiceController::from_registry()
+        .send(messages::unchecked::LoadServices {
+            data: settings.services,
+        })
+        .map_err(|_| ());
+    actix::spawn(startup);
+    let crypto_setup = UserService::from_registry()
+        .send(messages::unchecked::SetPasswordCost {
+            cost: settings.security.bcrypt_cost,
+        })
+        .and_then(|_| UserService::from_registry().send(messages::unchecked::StartupCheck {}))
+        .map(|_| ())
+        .map_err(|e| error!("User-Service startup check failed! {}", e));
+    actix::spawn(crypto_setup);
+    let _ = web::start(settings.web.domain, settings.web.max_session_age_secs);
+    sys.run()?;
 
     Ok(())
 }

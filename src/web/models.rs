@@ -1,46 +1,99 @@
+use crate::crypto;
+use crate::db::models as dbmodels;
+pub use crate::db::models::{ServicePerm, Session, SID, UID};
 use serde::{Deserialize, Serialize};
 
-pub type UID = i32;
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct ServiceRequest {
-    pub service: usize,
+    pub service: SID,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
+pub struct UserRequest {
+    pub user: UID,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PermRequest {
+    pub service: SID,
+    pub user: UID,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct NewUser {
     pub name: String,
     pub password: String,
     pub email: String,
 }
 
-#[derive(Serialize)]
-pub struct MinUser {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TOTP {
+    pub secret: String,
+    pub mode: dbmodels::TOTP_Mode,
+    pub digits: u32,
+}
+
+impl From<dbmodels::TOTP> for TOTP {
+    fn from(totp: dbmodels::TOTP) -> Self {
+        Self {
+            secret: crypto::totp_encode_secret(totp.secret.as_ref()),
+            mode: totp.mode,
+            digits: totp.digits,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ServicePermWrap {
+    pub perms: u32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UserMin {
     pub name: String,
     pub id: UID,
     pub email: String,
 }
 
-#[derive(Serialize)]
-pub enum LoginState {
-    /// Success
-    LoggedIn,
-    /// Invalid credentials
-    Failed,
-    /// totp-login required
-    TOTP,
-    /// totp-setup required
-    SetupTOTP,
+/// json data fragment for SetUserInfo
+#[derive(Debug, Deserialize)]
+pub struct UserMinData {
+    pub name: String,
+    pub email: String,
 }
 
-#[derive(Deserialize)]
+impl From<dbmodels::FullUser> for UserMin {
+    fn from(user: dbmodels::FullUser) -> Self {
+        Self {
+            name: user.name,
+            id: user.id,
+            email: user.email,
+        }
+    }
+}
+
+/// Login state sent via API
+#[derive(Debug, Serialize)]
+pub enum LoginState {
+    /// Success
+    LoggedIn(String),
+    /// Invalid credentials
+    NotLoggedIn,
+    /// totp-login required
+    RequiresTOTP,
+    /// totp-setup required
+    RequiresTOTPSetup(TOTP),
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Login {
     pub email: String,
     pub password: String,
 }
 
-#[derive(Serialize)]
-pub enum CreateUserState {
-    Success(UID),
-    EMailClaimed,
+pub type TOTPValue = u64;
+
+#[derive(Debug, Serialize)]
+pub struct CreateUserResp {
+    pub user: UID,
 }

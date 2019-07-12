@@ -1,9 +1,10 @@
 use super::models::*;
-use super::{Error, Result};
+use super::Result;
+use crate::crypto;
 use bincode::{deserialize, serialize};
+use std::collections::HashMap;
 
 use failure;
-use failure::Fallible;
 use sled::*;
 use std::sync::Arc;
 
@@ -17,8 +18,6 @@ pub enum DBError {
     SledError(#[cause] failure::Error),
     #[fail(display = "Interal failure with invalid Data {}", _0)]
     BincodeError(#[cause] Box<bincode::ErrorKind>),
-    #[fail(display = "Internal failure to apply bcrypt to password! {}", _0)]
-    EncryptioNError(#[cause] bcrypt::BcryptError),
 }
 
 impl From<Box<bincode::ErrorKind>> for DBError {
@@ -44,18 +43,7 @@ impl From<Box<bincode::ErrorKind>> for super::Error {
     }
 }
 
-// impl From<pagecache::Error> for DBError {
-//     fn from(error: pagecache::Error) -> Self {
-//         DBError::SledError2(error)
-//     }
-// }
-
 macro_rules! ser {
-    ($expression:expr) => {
-        serialize(&$expression).unwrap()
-    };
-}
-macro_rules! serr {
     ($expression:expr) => {
         serialize(&$expression).unwrap()
     };
@@ -69,15 +57,24 @@ lazy_static! {
 }
 
 mod tree {
+    /// UID<->FullUser
     pub const USER: &'static str = "USER";
+    /// email String<->UID
     pub const REL_MAIL_UID: &'static str = "REL_MAIL_UID";
+    /// Specific see meta
     pub const META: &'static str = "META";
-    pub const PERMISSION: &'static str = "PERMISSIONS";
+    /// "UID_SID"<->ServicePerm
+    pub const PERMISSION_SERVICE: &'static str = "PERMISSIONS_SERVICE";
+    /// "UID"<->ManPerm
+    pub const PERMISSION_MANAGEMENT: &'static str = "PERMISSIONS_MANAGEMENT";
+    /// session String<->UID
     pub const LOGINS: &'static str = "LOGINS";
+    /// session String<->u64 time
     pub const REL_LOGIN_SEEN: &'static str = "REL_LOGIN_SEEN";
 }
 
 mod meta {
+    /// UID - atomic counter for unique UID generation
     pub const USER_AUTO_ID: &'static str = "USER_AUTO_ID";
 }
 
@@ -89,7 +86,14 @@ pub struct DB {
 impl Default for DB {
     fn default() -> Self {
         Self {
-            db: Db::start_default("db.sled").unwrap(),
+            // TODO: this does NOT return but panic when the DB is already in use
+            db: match Db::start_default("db.sled") {
+                Err(e) => {
+                    error!("Unable to start local DB: {}", e);
+                    panic!("Unable to start local DB: {}", e);
+                }
+                Ok(v) => v,
+            },
         }
     }
 }
@@ -97,6 +101,15 @@ impl Default for DB {
 type WTree = Arc<Tree>;
 
 impl DB {
+    /// Generate serialized Service-Perm ID
+    #[inline]
+    fn service_perm_key(uid: UID, sid: SID) -> Vec<u8> {
+        serialize(&(uid, sid)).unwrap()
+    }
+    #[inline]
+    fn service_perm_key_reverse(data: &[u8]) -> Result<(UID, SID)> {
+        Ok(deserialize(data)?)
+    }
     /// Open tree with wrapped error
     fn open_tree(&self, tree: &'static str) -> Result<WTree> {
         Ok(self
@@ -120,11 +133,10 @@ impl DB {
         })
     }
 
-    /// Generate ID and check that it's not in use currently.  
-    /// target_db is the DB to check against
+    /// Generate ID and check that it's not in use currently.
     fn gen_user_id_secure(&self) -> Result<UID> {
         let max = 100;
-        for i in 0..max {
+        for _ in 0..max {
             let id = self.gen_user_id()?;
             if self.is_valid_uid(&id)? {
                 warn!("Generated user ID exists already! {}", id);
@@ -140,21 +152,16 @@ impl DB {
     fn is_valid_uid(&self, id: &UID) -> Result<bool> {
         Ok(self.open_tree(tree::USER)?.contains_key(ser!(id))?)
     }
-    /// Check if mail is taken
-    fn is_mail_taken(&self, mail: &str) -> Result<bool> {
-        Ok(self
-            .open_tree(tree::REL_MAIL_UID)?
-            .contains_key(ser!(mail))?)
-    }
     /// Inner function to simulate transaction
-    fn create_user_inner(&self, new_user: NewUser, id: UID) -> Result<FullUser> {
+    fn create_user_inner(&self, new_user: NewUserEnc, id: UID) -> Result<FullUser> {
         let user = FullUser {
             id,
             email: new_user.email,
+            verified: false,
             name: new_user.name,
-            password: super::bcrypt_password(&new_user.password)
-                .map_err(|e| DBError::EncryptioNError(e))?,
-            totp_secret: None,
+            password: new_user.password_enc,
+            totp: crypto::totp_gen_secret(),
+            totp_complete: false,
         };
         self.open_tree(tree::USER)?.set(ser!(id), ser!(user))?;
         self.open_tree(tree::REL_MAIL_UID)?
@@ -164,7 +171,19 @@ impl DB {
 }
 
 impl super::DBInterface for DB {
-    fn create_user(&self, new_user: NewUser) -> Result<FullUser> {
+    fn new_temp() -> Self {
+        let config = ConfigBuilder::default().temporary(true);
+
+        Self {
+            db: Db::start(config.build()).unwrap(),
+        }
+    }
+
+    fn get_root_id(&self) -> UID {
+        MIN_UID
+    }
+
+    fn create_user(&self, new_user: NewUserEnc) -> Result<FullUser> {
         let mail_ser = ser!(new_user.email);
         let claimed = self
             .open_tree(tree::REL_MAIL_UID)?
@@ -175,7 +194,7 @@ impl super::DBInterface for DB {
                 }
             })?;
         if claimed.is_some() {
-            return Err(super::Error::EMailExists(new_user.email));
+            return Err(super::Error::EMailExists);
         }
         // first get ID, otherwise release lock
         let id = match self.gen_user_id_secure() {
@@ -199,66 +218,156 @@ impl super::DBInterface for DB {
         }
     }
 
-    fn get_users(&self) -> Result<Vec<MinUser>> {
+    fn get_users(&self) -> Result<Vec<UserMin>> {
         let mut users = Vec::new();
         for u in self.open_tree(tree::USER)?.iter() {
             let (_, v) = u?;
             let user: FullUser = deserialize(&v)?;
-            users.push(MinUser {
-                name: user.name,
-                id: user.id,
-                email: user.email,
-            });
+            users.push(UserMin::from(user));
         }
         Ok(users)
     }
 
-    fn get_user_permissions(&self, id: UID) -> Result<Vec<String>> {
-        let v = self.open_tree(tree::PERMISSION)?.get(ser!(id))?;
+    fn get_perm_admin(&self) -> Result<Vec<UID>> {
+        let mut vec = Vec::new();
+        for val in self.open_tree(tree::PERMISSION_MANAGEMENT)?.iter() {
+            let (uid_r, perm_r) = val?;
+            if deserialize::<ManagementPerm>(&perm_r)?.admin {
+                vec.push(deserialize(&uid_r)?);
+            }
+        }
+        Ok(vec)
+    }
+
+    fn get_perm_service(&self, id: UID, service: SID) -> Result<ServicePerm> {
+        let v = self
+            .open_tree(tree::PERMISSION_SERVICE)?
+            .get(&DB::service_perm_key(id, service))?;
         Ok(match v {
             Some(v) => deserialize(&v)?,
-            None => Vec::new(),
+            None => ServicePerm::default(),
         })
     }
-    fn update_user_permission(&self, id: UID, perms: Vec<String>) -> Result<()> {
-        self.open_tree(tree::PERMISSION)?
-            .set(ser!(id), ser!(perms))?;
+
+    fn get_all_perm_service(&self, id: UID) -> Result<HashMap<SID, ServicePerm>> {
+        let v = self.open_tree(tree::PERMISSION_SERVICE)?;
+        let start = (id, 0);
+        let end = (id + 1, 0);
+        let iter = v.range(ser!(start)..ser!(end));
+        Ok(iter
+            .map(|v| {
+                let (key, value) = v?;
+                let (_, sid) = DB::service_perm_key_reverse(&key)?;
+                Ok((sid, deserialize::<ServicePerm>(&value)?))
+            })
+            .collect::<Result<HashMap<SID, ServicePerm>>>()?)
+    }
+
+    fn set_perm_service(&self, id: UID, service: SID, new_perms: ServicePerm) -> Result<()> {
+        let tree = self.open_tree(tree::PERMISSION_SERVICE)?;
+        let key = DB::service_perm_key(id, service);
+        if new_perms.is_empty() {
+            tree.del(&key)?;
+        } else {
+            tree.set(&key, ser!(new_perms))?;
+        }
         Ok(())
     }
 
-    fn get_login(&self, login: &str) -> Result<Option<ActiveLogin>> {
-        Ok(match self.open_tree(tree::LOGINS)?.get(serr!(login))? {
-            Some(v) => Some(deserialize(&v)?),
+    fn get_perm_man(&self, id: UID) -> Result<ManagementPerm> {
+        match self.open_tree(tree::PERMISSION_MANAGEMENT)?.get(ser!(id))? {
+            Some(v) => Ok(deserialize(&v)?),
+            None => Ok(ManagementPerm::default()),
+        }
+    }
+    fn set_perm_man(&self, id: UID, perm: &ManagementPerm) -> Result<()> {
+        self.open_tree(tree::PERMISSION_MANAGEMENT)?
+            .set(ser!(id), ser!(perm))?;
+        Ok(())
+    }
+
+    fn get_login(&self, session: &str, max_age: u32) -> Result<Option<ActiveLogin>> {
+        Ok(match self.open_tree(tree::LOGINS)?.get(ser!(session))? {
+            Some(v) => {
+                let login = deserialize(&v)?;
+                let outdated = match self.open_tree(tree::REL_LOGIN_SEEN)?.get(ser!(session))? {
+                    Some(age_raw) => {
+                        let age: u64 = deserialize(&age_raw)?;
+                        super::get_current_time() - age > max_age as u64
+                    }
+                    None => {
+                        warn!("Found inconsisent login without time!");
+                        self.set_login(session, None)?;
+                        false
+                    }
+                };
+
+                if outdated {
+                    None
+                } else {
+                    Some(login)
+                }
+            }
             None => None,
         })
     }
-    fn set_login(&self, login: &str, state: Option<ActiveLogin>) -> Result<()> {
+    fn set_login(&self, session: &str, state: Option<ActiveLogin>) -> Result<()> {
         let tree = self.open_tree(tree::LOGINS)?;
         match state {
             None => {
-                tree.del(serr!(login))?;
-                self.open_tree(tree::REL_LOGIN_SEEN)?.del(serr!(login))?;
+                tree.del(ser!(session))?;
+                self.open_tree(tree::REL_LOGIN_SEEN)?.del(ser!(session))?;
             }
             Some(state) => {
-                tree.set(serr!(login), ser!(state))?;
-                self.update_login(login)?;
+                tree.set(ser!(session), ser!(state))?;
+                self.update_login(session)?;
             }
         }
         Ok(())
     }
 
-    fn update_login(&self, login: &str) -> Result<()> {
+    fn update_login(&self, session: &str) -> Result<()> {
         self.open_tree(tree::REL_LOGIN_SEEN)?
-            .set(serr!(login), ser!(super::get_current_time()))?;
+            .set(ser!(session), ser!(super::get_current_time()))?;
         Ok(())
     }
 
+    fn delete_old_logins(&self, max_age: u32) -> Result<usize> {
+        let mut deleted = 0;
+        let tree_rel = self.open_tree(tree::REL_LOGIN_SEEN)?;
+        let tree_logins = self.open_tree(tree::LOGINS)?;
+        for val in tree_rel.iter() {
+            let (session, time) = val?;
+            let time: u64 = deserialize(&time)?;
+            if super::get_current_time() - time > max_age as u64 {
+                tree_rel.del(&session)?;
+                tree_logins.del(session)?;
+                deleted += 1;
+            }
+        }
+        Ok(deleted)
+    }
+
     fn update_user(&self, user: FullUser) -> Result<()> {
+        if !self.is_valid_uid(&user.id)? {
+            return Err(super::Error::InvalidUser(user.id).into());
+        }
         let old_email = self.get_user(user.id)?.email;
+        if old_email != user.email {
+            debug!("old mail != new mail");
+            let tree = self.open_tree(tree::REL_MAIL_UID)?;
+            match tree.cas(ser!(user.email), None as Option<&[u8]>, Some(ser!(user.id)))? {
+                Err(_) => {
+                    return Err(super::Error::EMailExists);
+                }
+                Ok(_) => {
+                    debug!("{} not in use", user.email);
+                    tree.del(ser!(old_email))?;
+                }
+            }
+        }
         self.open_tree(tree::USER)?.set(ser!(user.id), ser!(user))?;
-        let tree = self.open_tree(tree::REL_MAIL_UID)?;
-        tree.set(ser!(user.email), ser!(user.id))?;
-        tree.del(ser!(old_email))?;
+
         Ok(())
     }
 
@@ -268,7 +377,15 @@ impl super::DBInterface for DB {
             None => return Err(super::Error::InvalidUser(id).into()),
         };
         self.open_tree(tree::REL_MAIL_UID)?.del(ser!(user.email))?;
-        self.open_tree(tree::PERMISSION)?.del(ser!(id))?;
+        self.open_tree(tree::PERMISSION_SERVICE)?.del(ser!(id))?;
+        let sessions = self.open_tree(tree::LOGINS)?;
+        for val in sessions.iter() {
+            let (key, val) = val?;
+            let al: ActiveLogin = deserialize(&val)?;
+            if al.id == id {
+                sessions.del(key)?;
+            }
+        }
         Ok(())
     }
 
@@ -281,7 +398,7 @@ impl super::DBInterface for DB {
     }
 
     fn get_id_by_email(&self, email: &str) -> Result<Option<UID>> {
-        let data = self.open_tree(tree::REL_MAIL_UID)?.get(serr!(email))?;
+        let data = self.open_tree(tree::REL_MAIL_UID)?.get(ser!(email))?;
 
         if let Some(v) = data {
             let id = deserialize(&v)?;
@@ -291,5 +408,37 @@ impl super::DBInterface for DB {
             }
         }
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    type Pair = (i32, i32);
+    #[test]
+    fn test_range_service_perm() {
+        let config = ConfigBuilder::default().temporary(true);
+
+        let db = Db::start(config.build()).unwrap();
+        const A_END: i32 = 100;
+        const B_END: i32 = 20;
+        for a in 0..A_END {
+            for b in 0..B_END {
+                db.set(ser!((a, b)), ser!(format!("{}-{}", a, b))).unwrap();
+            }
+        }
+
+        let a: i32 = 22;
+        let b_start = 5;
+        let start: Pair = (a, b_start);
+        let end: Pair = (a + 1, 0);
+        let mut iter = db.range(ser!(start)..ser!(end));
+        for r in b_start..B_END {
+            let (key, val) = iter.next().unwrap().unwrap();
+            assert_eq!((a, r), deserialize::<Pair>(&key).unwrap());
+            assert_eq!(format!("{}-{}", a, r), deserialize::<String>(&val).unwrap());
+        }
+        assert!(iter.next().is_none());
     }
 }
