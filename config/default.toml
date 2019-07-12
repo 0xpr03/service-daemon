@@ -5,26 +5,32 @@
 #password = "12345"
 
 [security]
+# minimal length for passwords
 password_min_length = 10
 # Costs for bcrypt password verification
 # Decreasing the value removes
 bcrypt_cost = 10
 
 [web]
-domain = "localhost"
 # 1 day 60*60*24
 max_session_age_secs = 86400
 
 [[services]]
 # ID is required to bind user permissions
 id = 0
-enabled = true
+# whether the service will be loaded
+enabled = false
+# service name
 name = "mc-server"
+# start service automatically
 autostart = false
+# command to run (application)
 command = "java"
-directory = "~/Temp/test_through/DDSS+Serverfiles+V.+5.1/"
-args = ["-jar","forge-1.12.2-14.23.5.2836-universal.jar","nogui"]
-# send to process for soft-stop
+# absolute paths, see issue #9
+directory = "/foo/bar/"
+# arguments for command
+args = ["-jar","sample.jar"]
+# if set, send to process for soft-stop
 soft_stop = "stop"
 # restart on crash
 restart = true
@@ -38,15 +44,5 @@ name = "cat utf8-lossy demo"
 autostart = true
 command = "/bin/cat"
 directory = "/home"
-args = ["~/Documents/Docs/notizen/temp1.txt"]
-restart = false
-
-[[services]]
-id = 2
-enabled = true
-name = "voc trainer"
-autostart = true
-command = "java"
-directory = "~/Dev/binaries/"
-args = ["-jar","~/Dev/binaries/foo.jar"]
+args = ["~/.profile"]
 restart = false
