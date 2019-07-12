@@ -40,7 +40,7 @@ And to monitor new software, unstable services etc.
 
 - Build: First of all you will need to go through the [building](#building) section.
 - First Run: After this you run the program, which will setup the root account and print the login credentials.
-- Setup 2FA: Now you login with those credentials and setup TOTP (for example , google authenticator, 1Password)
+- Setup 2FA: Now you login with those credentials and setup TOTP (for example andOTP, google authenticator, 1Password)
 - Configure: in /config/default.toml you can now specify your services. Please restart service-daemon to apply those changes.
 
 ### Building
