@@ -1,0 +1,16 @@
+.text-normal {
+    color: #f1f1f1 !important;
+}
+  
+.console-col {
+    background-color: #222 !important;
+    word-wrap: break-word;
+}
+
+.console-col:hover {
+    background-color: #444 !important;
+}
+
+.console-wrapper {
+    background-color: #222 !important;
+}
