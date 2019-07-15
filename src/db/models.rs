@@ -101,6 +101,8 @@ bitflags! {
         const STDIN_ALL = 0b00000100;
         /// Output inspect
         const OUTPUT = 0b00001000;
+        /// Kill service
+        const KILL   = 0b00010000;
     }
 }
 

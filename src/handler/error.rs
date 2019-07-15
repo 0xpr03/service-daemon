@@ -106,6 +106,8 @@ pub enum ControllerError {
     SendError(#[cause] MailboxError),
     #[fail(display = "Internal DB error: {}", _0)]
     DBError(db::Error),
+    #[fail(display = "Service has no soft-stop parameter")]
+    NoSoftStop,
 }
 
 impl From<db::Error> for ControllerError {

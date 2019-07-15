@@ -51,6 +51,7 @@ pub fn start(domain: String, max_age_secs: i64) -> std::io::Result<Server> {
                     .service(web::resource("/input").route(web::post().to_async(api::input)))
                     .service(web::resource("/stop").route(web::post().to_async(api::stop)))
                     .service(web::resource("/start").route(web::post().to_async(api::start)))
+                    .service(web::resource("/kill").route(web::post().to_async(api::kill)))
                 )
                 .service(web::resource("/services").route(web::get().to_async(api::services)))
                 .default_service(web::resource("")

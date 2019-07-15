@@ -278,6 +278,22 @@ pub fn start(
     })
 }
 
+pub fn kill(
+    item: web::Path<ServiceRequest>,
+    id: Identity,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    let service = item.into_inner().service;
+    check_perm!(id.identity(), service, ServicePerm::KILL, move || {
+        ServiceController::from_registry()
+            .send(unchecked::KillService { id: service })
+            .map_err(Error::from)
+            .map(|response| match response {
+                Ok(()) => HttpResponse::NoContent().finish(),
+                Err(e) => e.error_response(),
+            })
+    })
+}
+
 pub fn stop(
     item: web::Path<ServiceRequest>,
     id: Identity,

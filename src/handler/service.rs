@@ -121,25 +121,12 @@ impl Handler<SendStdin> for ServiceController {
     }
 }
 
-impl Handler<StopService> for ServiceController {
+impl Handler<KillService> for ServiceController {
     type Result = Result<(), ControllerError>;
 
-    fn handle(&mut self, msg: StopService, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: KillService, _ctx: &mut Context<Self>) -> Self::Result {
         if let Some(service) = self.services.get_mut(&msg.id) {
-            if !service.running.load(Ordering::Relaxed) {
-                return Err(ControllerError::ServiceStopped.into());
-            }
-            service.state.set_state(State::Stopped);
-            service.stdin = None;
-            if let Some(stdin) = service.stdin.as_mut() {
-                if let Some(stop_msg) = service.model.soft_stop.as_ref() {
-                    match stdin.try_send(stop_msg.clone()) {
-                        Err(e) => warn!("Can't soft-stop process: {}", e),
-                        Ok(_) => return Ok(()),
-                    }
-                }
-            }
-            if let Some(v) = service.stop_channel.take() {
+            if let Some(v) = service.kill_handle.take() {
                 let _ = v.send(());
                 return Ok(());
             }
@@ -150,10 +137,38 @@ impl Handler<StopService> for ServiceController {
     }
 }
 
+impl Handler<StopService> for ServiceController {
+    type Result = Result<(), ControllerError>;
+
+    fn handle(&mut self, msg: StopService, _ctx: &mut Context<Self>) -> Self::Result {
+        if let Some(service) = self.services.get_mut(&msg.id) {
+            if !service.running.load(Ordering::Acquire) {
+                return Err(ControllerError::ServiceStopped.into());
+            }
+            // service.stdin = None;
+            let stdin = match service.stdin.as_mut() {
+                Some(stdin) => stdin,
+                None => return Err(ControllerError::NoServiceHandle.into()),
+            };
+            let stop_msg = match service.model.soft_stop.as_ref() {
+                Some(stop_msg) => stop_msg,
+                None => return Err(ControllerError::NoSoftStop.into()),
+            };
+            if let Err(e) = stdin.try_send(format!("{}\n", stop_msg)) {
+                warn!("Can't soft-stop process: {}", e);
+            }
+            service.state.set_state(State::Stopping);
+            Ok(())
+        } else {
+            Err(ControllerError::InvalidInstance(msg.id).into())
+        }
+    }
+}
+
 impl Handler<ServiceStateChanged> for ServiceController {
     type Result = ();
     fn handle(&mut self, msg: ServiceStateChanged, ctx: &mut Context<Self>) {
-        if let Some(instance) = self.services.get(&msg.id) {
+        if let Some(instance) = self.services.get_mut(&msg.id) {
             if !msg.running {
                 let mut restart =
                     instance.model.restart && instance.state.get_state() == State::Crashed;
@@ -165,6 +180,10 @@ impl Handler<ServiceStateChanged> for ServiceController {
                     ctx.address().do_send(StartService {
                         id: instance.model.id,
                     });
+                } else {
+                    // cleanup
+                    instance.kill_handle = None;
+                    instance.stdin = None;
                 }
             }
         }
@@ -322,7 +341,7 @@ struct Instance {
     running: Arc<AtomicBool>,
     tty: Arc<RwLock<ArrayDeque<[LogType<Vec<u8>>; 2048], Wrapping>>>,
     state: StateFlag,
-    stop_channel: Option<futures::sync::oneshot::Sender<()>>,
+    kill_handle: Option<futures::sync::oneshot::Sender<()>>,
     stdin: Option<futures::sync::mpsc::Sender<String>>,
     start_time: Option<u64>,
 }
@@ -341,6 +360,8 @@ pub enum State {
     Running = 1,
     Ended = 2,
     Crashed = 3,
+    Stopping = 4,
+    Killed = 5,
 }
 
 // derived from https://gist.github.com/polypus74/eabc7bb00873e6b90abe230f9e632989
@@ -373,6 +394,8 @@ impl From<usize> for State {
             1 => Running,
             2 => Ended,
             3 => Crashed,
+            4 => Stopping,
+            5 => Killed,
             _ => unreachable!(),
         }
     }
@@ -494,12 +517,19 @@ impl Instance {
                             format!("Process ended with signal {}({:?})", state, code_formated)
                                 .into_bytes(),
                         ));
-                        if state_c.get_state() == State::Running {
-                            if state.success() {
-                                state_c.set_state(State::Ended);
-                            } else {
-                                state_c.set_state(State::Crashed);
+                        match state_c.get_state() {
+                            State::Running => {
+                                if state.success() {
+                                    state_c.set_state(State::Ended);
+                                } else {
+                                    state_c.set_state(State::Crashed);
+                                }
                             }
+                            State::Stopping => {
+                                state_c.set_state(State::Stopped);
+                            }
+                            // should we override anyway ?
+                            _ => (),
                         }
                         Ok(())
                     }
@@ -514,16 +544,18 @@ impl Instance {
                 }
             });
 
-            // stop-handle
+            // kill-handle
             let buffer_c = self.tty.clone();
+            let state_c = self.state.clone();
             let (tx, rx) = futures::sync::oneshot::channel::<()>();
             let child = child
                 .select(rx.map_err(|_| ()).map(move |_| {
+                    state_c.set_state(State::Killed);
                     let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
                     buffer_w.push_back(LogType::State(String::from("Process killed").into_bytes()));
                 }))
                 .then(|_x| Ok(()));
-            self.stop_channel = Some(tx);
+            self.kill_handle = Some(tx);
 
             let name_c = self.model.name.clone();
             let running_c = self.running.clone();
@@ -555,7 +587,7 @@ impl From<Service> for Instance {
             running: Arc::new(AtomicBool::new(false)),
             tty: Arc::new(RwLock::new(ArrayDeque::new())),
             state: StateFlag::new(State::Stopped),
-            stop_channel: None,
+            kill_handle: None,
             stdin: None,
             start_time: None,
         }

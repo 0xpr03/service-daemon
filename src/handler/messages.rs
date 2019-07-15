@@ -170,6 +170,13 @@ pub mod unchecked {
         pub id: SID,
     }
 
+    /// **Unchecked!** kill service
+    #[derive(Message)]
+    #[rtype(result = "Result<(), ControllerError>")]
+    pub struct KillService {
+        pub id: SID,
+    }
+
     /// **Unchecked!** get service status
     #[derive(Message)]
     #[rtype(result = "Result<ServiceState, ControllerError>")]
