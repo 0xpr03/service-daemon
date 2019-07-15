@@ -136,6 +136,7 @@ export default class Login extends React.Component {
                 this.updateMode(response);
             })
             .catch(error => {
+                this.setState({loading: false});
                 if (error.response) {
                     if (error.response.status === 403) {
                         this.setState({ invalidLogin: true });
