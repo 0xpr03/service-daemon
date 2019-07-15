@@ -45,11 +45,11 @@ export default class NewUser extends React.Component {
         const password = this.state.password;
         api_create_user(name, email, password)
             .then(resp => {
-                this.props.history.push('/user/'+resp.data.user);
+                this.props.history.push('/user/' + resp.data.user);
             })
             .catch(err => {
-                if (err.response && err.response.status === 409 ) {
-                    this.setState({error: "Email is already in use."});
+                if (err.response && err.response.status === 409) {
+                    this.setState({ error: "Email is already in use." });
                 } else {
                     this.setState({ error: "Unable to create user: " + err });
                 }

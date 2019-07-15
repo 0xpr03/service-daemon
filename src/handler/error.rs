@@ -98,7 +98,7 @@ pub enum ControllerError {
     NoServiceHandle,
     #[fail(display = "Service already running!")]
     ServiceRunning,
-    #[fail(display = "Pipe to process is broken! This is an bug!")]
+    #[fail(display = "Stdin pipe to process is broken! This is an bug!")]
     BrokenPipe,
     #[fail(display = "Error when accessing UserController: {}", _0)]
     UserError(#[cause] UserError),

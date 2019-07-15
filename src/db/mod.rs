@@ -184,7 +184,7 @@ mod test {
         other_user.email = full_user.email;
         match db.update_user(other_user) {
             Err(Error::EMailExists) => (),
-            v => panic!("Expected EmailExists, got {:?}",v),
+            v => panic!("Expected EmailExists, got {:?}", v),
         }
     }
 
@@ -199,7 +199,7 @@ mod test {
         };
         match db.create_user(new_user) {
             Err(Error::EMailExists) => (),
-            v => panic!("Expected EmailExists, got {:?}",v),
+            v => panic!("Expected EmailExists, got {:?}", v),
         }
     }
 
