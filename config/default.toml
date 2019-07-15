@@ -30,7 +30,8 @@ command = "java"
 directory = "/foo/bar/"
 # arguments for command
 args = ["-jar","sample.jar"]
-# if set, send to process for soft-stop
+# stop-command, if set. Send to process stdin for stopping.
+# Otherwise a process kill is required.
 soft_stop = "stop"
 # restart on crash
 restart = true
