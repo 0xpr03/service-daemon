@@ -27,6 +27,7 @@ pub struct Settings {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Web {
+    #[serde(default)]
     pub domain: String,
     pub max_session_age_secs: i64,
 }
