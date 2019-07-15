@@ -31,6 +31,8 @@ pub fn start(domain: String, max_age_secs: i64) -> std::io::Result<Server> {
                 .service(web::resource("/login").route(web::post().to_async(api::login)))
                 .service(web::resource("/checklogin").route(web::get().to_async(api::checklogin)))
                 .service(web::resource("/totp").route(web::post().to_async(api::totp)))
+                // current user permissions management
+                .service(web::resource("/permissions").route(web::get().to_async(api::session_permissions)))
                 .service(web::scope("/user")
                     .service(web::resource("/list").route(web::get().to_async(api::user_list)))
                     .service(web::resource("/create").route(web::post().to_async(api::create_user)))
@@ -52,6 +54,8 @@ pub fn start(domain: String, max_age_secs: i64) -> std::io::Result<Server> {
                     .service(web::resource("/stop").route(web::post().to_async(api::stop)))
                     .service(web::resource("/start").route(web::post().to_async(api::start)))
                     .service(web::resource("/kill").route(web::post().to_async(api::kill)))
+                    // Permissions of current user for service
+                    .service(web::resource("/permissions").route(web::get().to_async(api::session_service_perm)))
                 )
                 .service(web::resource("/services").route(web::get().to_async(api::services)))
                 .default_service(web::resource("")

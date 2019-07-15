@@ -1,5 +1,6 @@
 import React from "react";
 import Container from "react-bootstrap/Container";
+import ButtonToolbar from "react-bootstrap/ButtonToolbar";
 import Row from "react-bootstrap/Row";
 import Col from "react-bootstrap/Col";
 import Button from "react-bootstrap/Button";
@@ -7,7 +8,8 @@ import Error from "../components/error";
 import { fmtDuration } from "../lib/time";
 import Loading from "../components/loading";
 import { Link } from "react-router-dom";
-import { api_state, api_start, api_stop, ServiceState } from "../lib/Api";
+import { api_state, api_start, api_stop, api_kill, api_service_permissions, Permissions, ServiceState } from "../lib/Api";
+import { promises } from 'fs';
 
 export default class Service extends React.Component {
     constructor(props) {
@@ -22,10 +24,12 @@ export default class Service extends React.Component {
             name: undefined,
             state: undefined,
             restart: false,
+            permissions: 0,
         };
 
         this.startService = this.startService.bind(this);
         this.stopService = this.stopService.bind(this);
+        this.killService = this.killService.bind(this);
     }
 
     startService () {
@@ -35,7 +39,7 @@ export default class Service extends React.Component {
                 this.refreshState();
             })
             .catch(err => {
-                this.setState({ error: "Couldn't start service: "+err });
+                this.setState({ error: "Couldn't start service: " + err });
             });
     }
 
@@ -50,7 +54,18 @@ export default class Service extends React.Component {
                 this.refreshState();
             })
             .catch(err => {
-                this.setState({ error: "Couldn't stop service: "+err });
+                this.setState({ error: "Couldn't stop service: " + err });
+            });
+    }
+
+    killService () {
+        console.log("killing..");
+        api_kill(this.getSID())
+            .then(result => {
+                this.refreshState();
+            })
+            .catch(err => {
+                this.setState({ error: "Couldn't stop service: " + err });
             });
     }
 
@@ -60,22 +75,24 @@ export default class Service extends React.Component {
 
     refreshState () {
         this.setLoading(true);
-        api_state(this.getSID())
+        Promise.all([api_state(this.getSID()), api_service_permissions(this.getSID())])
             .then(resp => {
-                let data = resp.data;
+                let data_state = resp[0].data;
+                let data_perm = resp[1].data;
                 this.setState({
-                    name: data.name,
-                    uptime: data.uptime,
-                    state: data.state,
+                    name: data_state.name,
+                    uptime: data_state.uptime,
+                    state: data_state.state,
                     error: undefined,
+                    permissions: data_perm.perms,
                 });
             })
             .catch(err => {
-                this.setState({
-                    error: "Unable to load service state! " + err
-                });
+                console.log(err);
+                this.setState({ error: "Unable to fetch data: " + err });
             })
-            .then(() => this.setLoading(false));
+            .then(() =>
+                this.setLoading(false));
     }
 
     componentDidMount () {
@@ -88,7 +105,10 @@ export default class Service extends React.Component {
     }
 
     render () {
-        let stopped = this.state.state !== ServiceState.Running;
+        const running = this.state.state === ServiceState.Running;
+        const stopping = this.state.state === ServiceState.Stopping;
+        const stopped = !running && !stopping;
+        const perms = this.state.permissions;
 
         if (this.state.loading) {
             return (<Loading />);
@@ -100,7 +120,7 @@ export default class Service extends React.Component {
                     </Row>
                     <Row>
                         <Col><h2 className="text-secondary">{this.state.name}</h2></Col>
-                        <Col><Button as={Link} to={"/service/"+this.getSID()+"/console"}>Console</Button></Col>
+                        <Col><Button disabled={!Permissions.hasFlag(perms, Permissions.OUTPUT)} as={Link} to={"/service/" + this.getSID() + "/console"}>Console</Button></Col>
                     </Row>
                     <hr className="divider"></hr>
                     <Row>
@@ -111,12 +131,20 @@ export default class Service extends React.Component {
                         <Col><mark>State:</mark> {this.state.state}</Col>
                     </Row>
                     <Row>
+                    <ButtonToolbar>
                         {stopped &&
-                            <Col><Button onClick={() => this.startService()} variant="success">Start</Button></Col>
+                            <Col><Button onClick={() => this.startService()}
+                                disabled={!Permissions.hasFlag(perms, Permissions.START)} variant="success">Start</Button></Col>
                         }
-                        {this.state.state === ServiceState.Running &&
-                            <Col><Button onClick={() => this.stopService()} variant="danger">Stop</Button></Col>
+                        {running &&
+                            <Col><Button onClick={() => this.stopService()}
+                                disabled={!Permissions.hasFlag(perms, Permissions.STOP)} variant="danger">Stop</Button></Col>
                         }
+                        {(running || stopping) &&
+                            <Col><Button onClick={() => this.killService()}
+                                disabled={!Permissions.hasFlag(perms, Permissions.KILL)} variant="danger">Kill</Button></Col>
+                        }
+                    </ButtonToolbar>
                     </Row>
                 </Container>
             );

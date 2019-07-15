@@ -225,6 +225,46 @@ pub fn all_user_services(
     })
 }
 
+/// Return service permissions of current session
+pub fn session_service_perm(
+    id: Identity,
+    item: web::Path<ServiceRequest>,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    if let Some(session) = id.identity() {
+        Either::A(
+            UserService::from_registry()
+                .send(GetServicePerm {
+                    session,
+                    service: item.service,
+                })
+                .map_err(Error::from)
+                .map(|response| match response {
+                    Ok(v) => HttpResponse::Ok().json(ServicePermWrap { perms: v.bits() }),
+                    Err(e) => e.error_response(),
+                }),
+        )
+    } else {
+        Either::B(ok(UserError::InvalidSession.error_response()))
+    }
+}
+
+/// Return management permissons of current session
+pub fn session_permissions(id: Identity) -> impl Future<Item = HttpResponse, Error = Error> {
+    if let Some(session) = id.identity() {
+        Either::A(
+            UserService::from_registry()
+                .send(GetManagementPerm { session })
+                .map_err(Error::from)
+                .map(|response| match response {
+                    Ok(v) => HttpResponse::Ok().json(v),
+                    Err(e) => e.error_response(),
+                }),
+        )
+    } else {
+        Either::B(ok(UserError::InvalidSession.error_response()))
+    }
+}
+
 pub fn state(
     item: web::Path<ServiceRequest>,
     id: Identity,

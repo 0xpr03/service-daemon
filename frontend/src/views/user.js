@@ -53,17 +53,17 @@ export default class User extends React.Component {
         const user = this.getUID();
         const email = this.state.email;
         const name = this.state.name;
-        api_set_user_info(user,name,email)
-        .then(() => {
-            this.setState({storing_user: false, error: undefined});
-        })
-        .catch(err => {
-            if (err.response && err.response.status === 409 ) {
-                this.setState({error: "Email is already in use."});
-            } else {
-                this.setState({error: "Error updating user: "+err});
-            }
-        })
+        api_set_user_info(user, name, email)
+            .then(() => {
+                this.setState({ storing_user: false, error: undefined });
+            })
+            .catch(err => {
+                if (err.response && err.response.status === 409) {
+                    this.setState({ error: "Email is already in use." });
+                } else {
+                    this.setState({ error: "Error updating user: " + err });
+                }
+            })
     }
 
     savePermissions () {
@@ -166,6 +166,8 @@ export default class User extends React.Component {
             button_user_name = "Saving..";
         }
 
+        const perms = this.state.dialog_permission;
+
         return (<Container>
             <Error error={this.state.error} />
             <Modal show={this.state.dialog_service !== undefined} onHide={this.hidePermissions}>
@@ -178,16 +180,19 @@ export default class User extends React.Component {
                     <p>Permissions for service:</p>
                     <Form>
                         <Form.Check type="checkbox"
-                            checked={Permissions.hasFlag(this.state.dialog_permission, Permissions.START)}
+                            checked={Permissions.hasFlag(perms, Permissions.START)}
                             flag={Permissions.START} onChange={this.setPermission} label="Start service" />
                         <Form.Check type="checkbox"
-                            checked={Permissions.hasFlag(this.state.dialog_permission, Permissions.STOP)}
+                            checked={Permissions.hasFlag(perms, Permissions.STOP)}
                             flag={Permissions.STOP} onChange={this.setPermission} label="Stop service" />
                         <Form.Check type="checkbox"
-                            checked={Permissions.hasFlag(this.state.dialog_permission, Permissions.STDIN_ALL)}
+                            checked={Permissions.hasFlag(perms, Permissions.KILL)}
+                            flag={Permissions.KILL} onChange={this.setPermission} label="Kill service" />
+                        <Form.Check type="checkbox"
+                            checked={Permissions.hasFlag(perms, Permissions.STDIN_ALL)}
                             flag={Permissions.STDIN_ALL} onChange={this.setPermission} label="Stdin input" />
                         <Form.Check type="checkbox"
-                            checked={Permissions.hasFlag(this.state.dialog_permission, Permissions.OUTPUT)}
+                            checked={Permissions.hasFlag(perms, Permissions.OUTPUT)}
                             flag={Permissions.OUTPUT} onChange={this.setPermission} label="Stdout inspect" />
                     </Form>
                 </Modal.Body>

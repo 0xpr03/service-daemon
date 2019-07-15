@@ -12,6 +12,8 @@ export const ServiceState = {
     Running: "Running",
     Ended: "Ended",
     Crashed: "Crashed",
+    Stopping: "Stopping",
+    Killed: "Killed",
 };
 
 export const LogType = {
@@ -41,6 +43,10 @@ export function api_output (sid) {
 
 export function api_stop (sid) {
     return axios.post('/api/service/' + sid + '/stop');
+}
+
+export function api_kill (sid) {
+    return axios.post('/api/service/' + sid + '/kill');
 }
 
 export function api_start (sid) {
@@ -74,45 +80,61 @@ export function api_totp (token) {
     });
 }
 
-export function api_get_user_info(user) {
-    return axios.get("/api/user/"+user+"/info");
+export function api_get_user_info (user) {
+    return axios.get("/api/user/" + user + "/info");
 }
 
-export function api_set_user_info(user, name, email) {
-    return axios.post("/api/user/"+user+"/info", {name: name, email: email});
+export function api_set_user_info (user, name, email) {
+    return axios.post("/api/user/" + user + "/info", { name: name, email: email });
 }
 
 export function api_services_user (user) {
-    return axios.get("/api/user/"+user+"/services");
+    return axios.get("/api/user/" + user + "/services");
 }
 
-export function api_services() {
+/// Get all services for current session
+export function api_services () {
     return axios.get("/api/services");
 }
 
-export function api_get_perms(user,service) {
-    return axios.get("/api/user/"+user+"/permissions/"+service);
+/// get service permissions of user
+export function api_get_perms (user, service) {
+    return axios.get("/api/user/" + user + "/permissions/" + service);
 }
 
-export function api_set_perms(user,service,perms) {
-    return axios.post("/api/user/"+user+"/permissions/"+service, {perms: perms});
+/// set service permission of user
+export function api_set_perms (user, service, perms) {
+    return axios.post("/api/user/" + user + "/permissions/" + service, { perms: perms });
 }
 
-export function api_create_user(name,email,password) {
-    return axios.post("/api/user/create",{name: name, email: email, password: password});
+/// create user
+export function api_create_user (name, email, password) {
+    return axios.post("/api/user/create", { name: name, email: email, password: password });
+}
+
+/// service permissions of current session
+export function api_service_permissions (service) {
+    return axios.get("/api/service/" + service + "/permissions");
+}
+
+/// globa permissions of current session
+export function api_global_permissions () {
+    return axios.get("/api/");
 }
 
 export class Permissions {
     /// Start service
-    static START  = 1;
+    static START = 1;
     /// Stop service
-    static STOP   = 2;
+    static STOP = 2;
     /// Stdin write all
     static STDIN_ALL = 4;
     /// Output inspect
     static OUTPUT = 8;
+    /// Kill service
+    static KILL = 16;
 
-    static hasFlag(input,flag) {
+    static hasFlag (input, flag) {
         return input & flag;
     };
 } 
