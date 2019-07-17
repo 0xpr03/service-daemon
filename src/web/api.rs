@@ -270,16 +270,36 @@ pub fn state(
     id: Identity,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     let service = item.into_inner().service;
-    //TODO: allow any permission
-    check_perm!(id.identity(), service, ServicePerm::STOP, move || {
-        ServiceController::from_registry()
-            .send(unchecked::GetServiceState { id: service })
-            .map_err(Error::from)
-            .map(|response| match response {
-                Ok(v) => HttpResponse::Ok().json(v),
-                Err(e) => e.error_response(),
-            })
-    })
+    if let Some(session) = id.identity() {
+        Either::A(
+            UserService::from_registry()
+                .send(GetServicePerm {
+                    service,
+                    session: session,
+                })
+                .map_err(Error::from)
+                .and_then(move |res| match res {
+                    Ok(perms) => {
+                        if perms.is_empty() {
+                            Either::B(Either::A(ok(HttpResponse::Unauthorized().json("no perms"))))
+                        } else {
+                            Either::A(
+                                ServiceController::from_registry()
+                                    .send(unchecked::GetServiceState { id: service })
+                                    .map_err(Error::from)
+                                    .map(|response| match response {
+                                        Ok(v) => HttpResponse::Ok().json(v),
+                                        Err(e) => e.error_response(),
+                                    }),
+                            )
+                        }
+                    }
+                    Err(e) => Either::B(Either::B(ok(e.error_response()))),
+                }),
+        )
+    } else {
+        Either::B(ok(UserError::InvalidSession.error_response()))
+    }
 }
 
 pub fn input(
