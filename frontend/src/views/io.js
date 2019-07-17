@@ -2,10 +2,13 @@ import React from "react";
 import Container from "react-bootstrap/Container";
 import Row from "react-bootstrap/Row";
 import Output from "../components/output";
+import Col from "react-bootstrap/Col";
+import Button from "react-bootstrap/Button";
 import Error from "../components/error";
-import { api_state, api_output, api_input } from "../lib/Api";
+import { api_state, api_output, api_input, api_service_permissions, Permissions } from "../lib/Api";
 import Form from "react-bootstrap/Form";
 import { fmtDuration } from '../lib/time';
+import { Link } from "react-router-dom";
 
 export default class IO extends React.Component {
     constructor(props) {
@@ -18,6 +21,7 @@ export default class IO extends React.Component {
             name: "<Loading>",
             uptime: 0,
             loading: false,
+            permissions: props.location.permissions,
         };
 
         this.handleKeyDown = this.handleKeyDown.bind();
@@ -28,20 +32,20 @@ export default class IO extends React.Component {
         if (e.key === 'Enter') {
             console.log("input: " + this.state.input);
             api_input(this.getSID(), this.state.input)
-            .then(resp => {
-                this.setState({input: ""});
-                this.updateOutput();
-                this.clearError();
-            })
-            .catch(err => {
-                this.setState({ error: "Unable to send input: " + err });
-            })
-            
+                .then(resp => {
+                    this.setState({ input: "" });
+                    this.updateOutput();
+                    this.clearError();
+                })
+                .catch(err => {
+                    this.setState({ error: "Unable to send input: " + err });
+                })
+
         }
     }
 
-    clearError() {
-        this.setState({error: undefined});
+    clearError () {
+        this.setState({ error: undefined });
     }
 
     uptime () {
@@ -50,6 +54,14 @@ export default class IO extends React.Component {
 
     getSID () {
         return this.props.match.params.service;
+    }
+
+    updatePermissions () {
+        return api_service_permissions(this.getSID())
+            .then(resp => {
+                this.setState({ permissions: resp.data.perms });
+            })
+            .catch(error => this.setState({ error: "Unable to fetch permissions " + error }));
     }
 
     updateState () {
@@ -66,19 +78,29 @@ export default class IO extends React.Component {
     }
 
     updateOutput () {
-        api_output(this.getSID())
-            .then(resp => {
-                this.setState({ output: resp.data });
-                this.clearError();
-            })
-            .catch(err => {
-                this.setState({ error: "Unable to fetch data: " + err });
-            })
+        if (Permissions.hasFlag(this.state.permissions, Permissions.OUTPUT)) {
+            api_output(this.getSID())
+                .then(resp => {
+                    this.setState({ output: resp.data });
+                    this.clearError();
+                })
+                .catch(err => {
+                    this.setState({ error: "Unable to fetch data: " + err });
+                })
+        }
     }
 
     componentDidMount () {
-        this.updateState();
-        this.updateOutput();
+        if (this.state.permissions === undefined) {
+            this.updatePermissions()
+                .then(() => {
+                    this.updateState();
+                    this.updateOutput();
+                });
+        } else {
+            this.updateState();
+            this.updateOutput();
+        }
     }
 
     handleChange = (e) => {
@@ -86,19 +108,26 @@ export default class IO extends React.Component {
     }
 
     render () {
-
+        const service = this.getSID();
+        const perms = this.state.permissions;
+        const show_output = Permissions.hasFlag(perms, Permissions.OUTPUT);
+        const show_stdin = Permissions.hasFlag(perms, Permissions.STDIN_ALL);
         return (
-            <Container fluid={true} className="h-100">
+            <Container fluid={true} className="h-100 pt-md-2">
                 <div className="d-flex flex-column h-100">
                     <Row><Error error={this.state.error} /></Row>
-                    <Row><h3>{this.state.name}</h3></Row>
-                    <Row>Uptime: {this.uptime()}</Row>
+                    <Row><Col><h3>{this.state.name}</h3></Col><Col><Button as={Link} to={"/service/" + service}>Back to service</Button></Col></Row>
+                    <Row><Col>Uptime: {this.uptime()}</Col></Row>
                     <Row className="d-flex flex-grow-1 flex-fill overflow-auto console-wrapper">
-                        <Output data={this.state.output} />
+                        {show_output ? (
+                            <Output data={this.state.output} />) : (
+                                <Col className="text-danger console-col">No permissions for output inspection.</Col>
+                            )
+                        }
                     </Row>
                     <Row>
                         <Form.Control onChange={this.handleChange}
-                            value={this.state.input} type="text" onKeyDown={this.handleKeyDown} />
+                            value={this.state.input} placeholder="Enter command.." disabled={!show_stdin} type="text" onKeyDown={this.handleKeyDown} />
                     </Row>
                 </div>
             </Container>);

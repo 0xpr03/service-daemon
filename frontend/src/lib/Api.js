@@ -97,6 +97,10 @@ export function api_services () {
     return axios.get("/api/services");
 }
 
+export function api_delete_user(user) {
+    return axios.post("/api/user/"+user+"/delete");
+}
+
 /// get service permissions of user
 export function api_get_perms (user, service) {
     return axios.get("/api/user/" + user + "/permissions/" + service);

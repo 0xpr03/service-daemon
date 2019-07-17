@@ -9,7 +9,7 @@ import ListGroup from "react-bootstrap/ListGroup";
 import Button from "react-bootstrap/Button";
 import Error from "../components/error";
 import Form from "react-bootstrap/Form";
-import { api_services_user, api_get_user_info, api_get_perms, Permissions, api_set_perms, api_set_user_info } from "../lib/Api";
+import { api_services_user, api_get_user_info, api_get_perms, Permissions, api_set_perms, api_set_user_info, api_delete_user } from "../lib/Api";
 
 function ServiceEntry (props) {
     let badge = null;
@@ -37,15 +37,19 @@ export default class User extends React.Component {
             error_store: undefined,
             storing_perms: false,
             storing_user: false,
+            dialog_delete: false,
         }
 
         this.handleInputChange = this.handleInputChange.bind(this);
         this.showPermissions = this.showPermissions.bind(this);
+        this.showDelete = this.showDelete.bind(this);
         this.hidePermissions = this.hidePermissions.bind(this);
+        this.hideDelete = this.hideDelete.bind(this);
         this.setPermission = this.setPermission.bind(this);
         this.savePermissions = this.savePermissions.bind(this);
         this.saveUserData = this.saveUserData.bind(this);
         this.loadUserInfo = this.loadUserInfo.bind(this);
+        this.deleteUser = this.deleteUser.bind(this);
     }
 
     saveUserData (event) {
@@ -94,6 +98,14 @@ export default class User extends React.Component {
             })
     }
 
+    hideDelete () {
+        this.setState({dialog_delete: false});
+    }
+
+    showDelete () {
+        this.setState({dialog_delete: true});
+    }
+
     setPermission (event) {
         let value = event.target.checked;
         let flag = Number(event.target.attributes.flag.value);
@@ -128,6 +140,17 @@ export default class User extends React.Component {
             .catch(err => {
                 this.setState({ error: "Unable to fetch user info: " + err });
             })
+    }
+
+    deleteUser () {
+        this.setState({loading_delete: true});
+        api_delete_user(this.getUID())
+            .then(() => {
+                this.props.history.push('/users');
+            })
+            .catch(err => {
+                this.setState({error: "Unable to delete user: "+err, loading_delete: false});
+            });
     }
 
     componentDidMount () {
@@ -166,18 +189,37 @@ export default class User extends React.Component {
             button_user_name = "Saving..";
         }
 
+        let button_delete_name = "Delete User";
+        if (this.state.loading_delete) {
+            button_delete_name = "Deleting..";
+        }
+
         const perms = this.state.dialog_permission;
 
         return (<Container>
             <Error error={this.state.error} />
+            <Modal show={this.state.dialog_delete} onHide={this.hideDelete}>
+                <Modal.Header closeButton>
+                    <Modal.Title>Delete "{name}"</Modal.Title>
+                </Modal.Header>
+
+                <Modal.Body>
+                    <p>Do you really want to delete this user ?</p>
+                </Modal.Body>
+
+                <Modal.Footer>
+                    <Button onClick={this.hideDelete} variant="secondary">Cancel</Button>
+                    <Button onClick={this.deleteUser} variant="danger" disabled={this.state.loading_delete} >{button_delete_name}</Button>
+                </Modal.Footer>
+            </Modal>
             <Modal show={this.state.dialog_service !== undefined} onHide={this.hidePermissions}>
                 <Modal.Header closeButton>
-                    <Modal.Title>Edit permissions for {name}</Modal.Title>
+                    <Modal.Title>Permissions on "{name}"</Modal.Title>
                 </Modal.Header>
 
                 <Modal.Body>
                     <Error error={this.state.error_store} />
-                    <p>Permissions for service:</p>
+                    <p>Permissions:</p>
                     <Form>
                         <Form.Check type="checkbox"
                             checked={Permissions.hasFlag(perms, Permissions.START)}
@@ -222,13 +264,15 @@ export default class User extends React.Component {
                 </Form.Group>
                 <Form.Group>
                     <ButtonToolbar>
-                        <Button onClick={this.loadUserInfo} variant="secondary">Cancel</Button>
-                        <Button variant="primary" type="submit" disabled={this.state.storing_user} >{button_user_name}</Button>
+                        <Button onClick={this.loadUserInfo} variant="secondary">Reset</Button>
+                        <Button className="ml-2" variant="primary" type="submit" disabled={this.state.storing_user} >{button_user_name}</Button>
                     </ButtonToolbar>
                 </Form.Group>
             </Form>
             <Row><h3>Permissions of {this.state.name}</h3></Row>
-            <ListGroup>{services}</ListGroup>
+            <Container><ListGroup>{services}</ListGroup></Container>
+            <hr />
+            <Row><Col><Button onClick={this.showDelete} variant="danger">Delete User</Button></Col></Row>
         </Container>)
     }
 }

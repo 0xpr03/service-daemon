@@ -13,7 +13,7 @@ function User (props) {
         <tr>
             <td><Link to={"/user/" + props.user.id}>{props.user.id}</Link></td>
             <td><Link to={"/user/" + props.user.id}>{props.user.name}</Link></td>
-            <td><Link to={"/user/" + props.user.id}>{props.user.Email}</Link></td>
+            <td><Link to={"/user/" + props.user.id}>{props.user.email}</Link></td>
         </tr>
     );
 }
@@ -48,14 +48,14 @@ export default class Users extends React.Component {
                     <tr>
                         <th>#</th>
                         <th>Name</th>
-                        <th>Mail</th>
+                        <th>Email</th>
                     </tr>
                 </thead>
                 <tbody>
                     {users}
                 </tbody>
             </Table>
-            <Row><Col><Button as={Link} to="/new/user">Create User</Button></Col></Row>
+            <Row><Col><Button as={Link} to="/new/user">Create New User</Button></Col></Row>
         </Container>
         );
     }
