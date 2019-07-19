@@ -26,6 +26,17 @@ pub struct UserService {
 type Result<T> = ::std::result::Result<T, UserError>;
 
 impl UserService {
+    /// Returns UID for session if currently fully logged in
+    fn get_session_uid(&self, session: &str) -> Result<UID> {
+        use db::models::LoginState as DBLoginState;
+        match DB.get_login(session, self.login_max_age)? {
+            Some(v) => match v.state {
+                DBLoginState::Complete => Ok(v.id),
+                _ => Err(UserError::InvalidSession),
+            },
+            None => Err(UserError::InvalidSession),
+        }
+    }
     /// Insert full service perms for admins
     ///
     /// We could also just check the admin state, but this would require a second lookup
@@ -232,14 +243,12 @@ impl Handler<GetSessionServiceIDs> for UserService {
     type Result = Result<Vec<SID>>;
 
     fn handle(&mut self, msg: GetSessionServiceIDs, _ctx: &mut Context<Self>) -> Self::Result {
-        match DB.get_login(&msg.session, self.login_max_age)? {
-            Some(v) => Ok(DB
-                .get_all_perm_service(v.id)?
-                .into_iter()
-                .map(|(k, _)| k)
-                .collect()),
-            None => Err(UserError::InvalidSession),
-        }
+        let id = self.get_session_uid(&msg.session)?;
+        Ok(DB
+            .get_all_perm_service(id)?
+            .into_iter()
+            .map(|(k, _)| k)
+            .collect())
     }
 }
 
@@ -247,16 +256,7 @@ impl Handler<GetManagementPerm> for UserService {
     type Result = Result<ManagementPerm>;
 
     fn handle(&mut self, msg: GetManagementPerm, _ctx: &mut Context<Self>) -> Self::Result {
-        let uid = match DB.get_login(&msg.session, self.login_max_age)? {
-            Some(v) => {
-                use db::models::LoginState as DBLoginState;
-                if v.state != DBLoginState::Complete {
-                    return Err(UserError::InvalidPermissions);
-                }
-                v.id
-            }
-            None => return Err(UserError::InvalidSession),
-        };
+        let uid = self.get_session_uid(&msg.session)?;
         Ok(DB.get_perm_man(uid)?)
     }
 }
@@ -282,16 +282,7 @@ impl Handler<GetServicePerm> for UserService {
     type Result = Result<ServicePerm>;
 
     fn handle(&mut self, msg: GetServicePerm, _ctx: &mut Context<Self>) -> Self::Result {
-        let uid = match DB.get_login(&msg.session, self.login_max_age)? {
-            Some(v) => {
-                use db::models::LoginState as DBLoginState;
-                if v.state != DBLoginState::Complete {
-                    return Err(UserError::InvalidPermissions);
-                }
-                v.id
-            }
-            None => return Err(UserError::InvalidSession),
-        };
+        let uid = self.get_session_uid(&msg.session)?;
         Ok(DB.get_perm_service(uid, msg.service)?)
     }
 }
@@ -318,16 +309,7 @@ impl Handler<CreateUser> for UserService {
     type Result = Result<CreateUserResp>;
 
     fn handle(&mut self, msg: CreateUser, _ctx: &mut Context<Self>) -> Self::Result {
-        let uid = match DB.get_login(&msg.invoker, self.login_max_age)? {
-            Some(v) => {
-                use db::models::LoginState as DBLoginState;
-                if v.state != DBLoginState::Complete {
-                    return Err(UserError::InvalidPermissions);
-                }
-                v.id
-            }
-            None => return Err(UserError::InvalidSession),
-        };
+        let uid = self.get_session_uid(&msg.invoker)?;
         self.check_admin(uid)?;
         self.create_user_unchecked(msg.user)
     }
@@ -357,16 +339,7 @@ impl Handler<DeleteUser> for UserService {
     type Result = Result<()>;
 
     fn handle(&mut self, msg: DeleteUser, _ctx: &mut Context<Self>) -> Self::Result {
-        let uid = match DB.get_login(&msg.invoker, self.login_max_age)? {
-            Some(v) => {
-                use db::models::LoginState as DBLoginState;
-                if v.state != DBLoginState::Complete {
-                    return Err(UserError::InvalidPermissions);
-                }
-                v.id
-            }
-            None => return Err(UserError::InvalidSession),
-        };
+        let uid = self.get_session_uid(&msg.invoker)?;
         if uid == msg.user {
             // can't delete admins
             warn!("{} tried to delete admin user {}", uid, msg.user);
