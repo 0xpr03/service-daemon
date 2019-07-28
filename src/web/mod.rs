@@ -37,6 +37,8 @@ pub fn start(domain: String, max_age_secs: i64) -> std::io::Result<Server> {
                     .service(web::resource("/list").route(web::get().to_async(api::user_list)))
                     .service(web::resource("/create").route(web::post().to_async(api::create_user)))
                     .service(web::scope("/{user}")
+                        .service(web::resource("/password").route(web::post().to_async(api::change_password)))
+                        .service(web::resource("/totp").route(web::post().to_async(api::change_totp)))
                         .service(web::resource("/info")
                             .route(web::get().to_async(api::get_user_info))
                             .route(web::post().to_async(api::set_user_info)))

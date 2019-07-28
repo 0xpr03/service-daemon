@@ -11,6 +11,16 @@ use actix_web::{error::ResponseError, web, Error, HttpRequest, HttpResponse};
 use futures::future::{err, ok, Either};
 use nanoid;
 
+/// Returns session, otherwise returns with InvalidSession http response
+macro_rules! get_session {
+    ($session:expr) => {
+        match $session.identity() {
+            Some(v) => v,
+            None => return Either::B(ok(UserError::InvalidSession.error_response())),
+        }
+    };
+}
+
 macro_rules! check_admin {
     ($session:expr,$cmd:expr) => {
         if let Some(session) = $session {
@@ -67,6 +77,48 @@ macro_rules! check_perm {
     };
 }
 
+pub fn change_totp(
+    item: web::Path<UserRequest>,
+    data: web::Json<ResetTOTP>,
+    id: Identity,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    let identity = get_session!(id);
+    Either::A(
+        UserService::from_registry()
+            .send(ResetUserTOTP{
+                invoker: identity,
+                data: data.into_inner(),
+                id: item.user,
+            })
+            .map_err(Error::from)
+            .map(move |res| match res {
+                Ok(_) => HttpResponse::NoContent().finish(),
+                Err(e) => e.error_response(),
+            })
+    )
+}
+
+pub fn change_password(
+    item: web::Path<UserRequest>,
+    data: web::Json<SetPassword>,
+    id: Identity,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    let identity = get_session!(id);
+    Either::A(
+        UserService::from_registry()
+            .send(SetUserPassword {
+                data: data.into_inner(),
+                invoker: identity,
+                id: item.user,
+            })
+            .map_err(Error::from)
+            .map(move |res| match res {
+                Ok(_) => HttpResponse::NoContent().finish(),
+                Err(e) => e.error_response(),
+            }),
+    )
+}
+
 pub fn fallback(_: HttpRequest) -> actix_web::Result<fs::NamedFile> {
     Ok(fs::NamedFile::open("static/index.html")?)
 }
@@ -103,22 +155,24 @@ pub fn set_user_info(
     data: web::Json<UserMinData>,
     id: Identity,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
-    check_admin!(id.identity(), move || {
-        let data = data.into_inner();
+    let identity = get_session!(id);
+    let data = data.into_inner();
+    Either::A(
         UserService::from_registry()
-            .send(unchecked::SetUserInfo {
+            .send(SetUserInfo {
                 user: UserMin {
                     id: item.user,
                     name: data.name,
                     email: data.email,
                 },
+                invoker: identity,
             })
             .map_err(Error::from)
             .map(move |res| match res {
                 Ok(_) => HttpResponse::NoContent().finish(),
                 Err(e) => e.error_response(),
-            })
-    })
+            }),
+    )
 }
 
 pub fn delete_user(

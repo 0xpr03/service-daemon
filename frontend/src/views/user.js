@@ -9,7 +9,8 @@ import ListGroup from "react-bootstrap/ListGroup";
 import Button from "react-bootstrap/Button";
 import Error from "../components/error";
 import Form from "react-bootstrap/Form";
-import { api_services_user, api_get_user_info, api_get_perms, Permissions, api_set_perms, api_set_user_info, api_delete_user } from "../lib/Api";
+import Alert from "react-bootstrap/Alert";
+import { api_services_user, api_get_user_info, api_get_perms, Permissions, api_set_perms, api_set_user_info, api_delete_user, api_totp_change, api_password_change } from "../lib/Api";
 
 function ServiceEntry (props) {
     let badge = null;
@@ -38,6 +39,14 @@ export default class User extends React.Component {
             storing_perms: false,
             storing_user: false,
             dialog_delete: false,
+            dialog_totp: false,
+            dialog_password: false,
+            loading_delete: false,
+            loading_totp: false,
+            loading_password: false,
+            new_password: '',
+            new_password_repeat: '',
+            password_mismatch: false,
         }
 
         this.handleInputChange = this.handleInputChange.bind(this);
@@ -50,6 +59,12 @@ export default class User extends React.Component {
         this.saveUserData = this.saveUserData.bind(this);
         this.loadUserInfo = this.loadUserInfo.bind(this);
         this.deleteUser = this.deleteUser.bind(this);
+        this.hidePassword = this.hidePassword.bind(this);
+        this.hideTOTP = this.hideTOTP.bind(this);
+        this.showPassword = this.showPassword.bind(this);
+        this.showTOTP = this.showTOTP.bind(this);
+        this.resetTOTP = this.resetTOTP.bind(this);
+        this.changePassword = this.changePassword.bind(this);
     }
 
     saveUserData (event) {
@@ -106,6 +121,22 @@ export default class User extends React.Component {
         this.setState({dialog_delete: true});
     }
 
+    showTOTP () {
+        this.setState({dialog_totp: true});
+    }
+
+    hideTOTP () {
+        this.setState({dialog_totp: false});
+    }
+
+    showPassword () {
+        this.setState({dialog_password: true});
+    }
+
+    hidePassword () {
+        this.setState({dialog_password: false});
+    }
+
     setPermission (event) {
         let value = event.target.checked;
         let flag = Number(event.target.attributes.flag.value);
@@ -153,6 +184,33 @@ export default class User extends React.Component {
             });
     }
 
+    resetTOTP () {
+        this.setState({loading_totp: true});
+        api_totp_change(this.getUID())
+            .then(() => {
+                this.setState({loading_totp: false, dialog_totp: false});
+            })
+            .catch(err => {
+                this.setState({error: "Unable to reset TOTP: "+err, loading_totp: false});
+            });
+    }
+
+    changePassword (event) {
+        event.preventDefault();
+        if ( this.state.new_password !== this.state.new_password_repeat ) {
+            this.setState({password_mismatch: true});
+            return;
+        }
+        this.setState({loading_password: true});
+        api_password_change(this.getUID(), this.state.new_password)
+            .then(() => {
+                this.setState({loading_password: false, dialog_password: false, password_mismatch: false});
+            })
+            .catch(err => {
+                this.setState({error: "Unable to reset TOTP: "+err, loading_password: false});
+            });
+    }
+
     componentDidMount () {
         api_services_user(this.getUID())
             .then(res => {
@@ -165,7 +223,6 @@ export default class User extends React.Component {
     }
 
     render () {
-        console.log(this.state.services);
         let showPerm = this.showPermissions;
         let services = Object.keys(this.state.services).map(function (key, index) {
             return (<ListGroup.Item flag={Permissions.START} key={this[key].id} onClick={() => showPerm(this[key].id)} action
@@ -194,13 +251,65 @@ export default class User extends React.Component {
             button_delete_name = "Deleting..";
         }
 
+        let button_totp_name = "Reset TOTP";
+        if (this.state.loading_totp) {
+            button_totp_name = "Resetting..";
+        }
+
+        let button_password_name = "Change password";
+        if (this.state.loding_password) {
+            button_password_name = "Setting password..";
+        }
+
         const perms = this.state.dialog_permission;
 
         return (<Container>
             <Error error={this.state.error} />
+            <Modal show={this.state.dialog_password} onHide={this.hidePassword}>
+                <Modal.Header closeButton>
+                    <Modal.Title>Change password of "{this.state.name}"</Modal.Title>
+                </Modal.Header>
+                
+                <Form onSubmit={this.changePassword}>
+                    <Modal.Body>
+                        { this.state.password_mismatch && (
+                            <Alert variant="danger">Passwords mismatching</Alert>
+                        ) }
+                        <p>Please specify a new password for this user:</p>
+                        <Form.Group controlId="formGroupPassword">
+                            <Form.Label>Password</Form.Label>
+                            <Form.Control required type="password" name="new_password" placeholder="Enter password" value={this.state.new_password} onChange={this.handleInputChange} />
+                        </Form.Group>
+                        <Form.Group controlId="formGroupPassword">
+                            <Form.Label>Repeat password</Form.Label>
+                            <Form.Control required type="password" name="new_password_repeat" placeholder="Enter password" value={this.state.new_password_repeat} onChange={this.handleInputChange} />
+                        </Form.Group>
+                    </Modal.Body>
+
+                    <Modal.Footer>
+                        <Button onClick={this.hidePassword} variant="secondary">Cancel</Button>
+                        <Button variant="danger" type="submit" disabled={this.state.loading_password} >{button_password_name}</Button>
+                    </Modal.Footer>
+                </Form>
+            </Modal>
+            <Modal show={this.state.dialog_totp} onHide={this.hideTOTP}>
+                <Modal.Header closeButton>
+                    <Modal.Title>Reset TOTP of "{this.state.name}"</Modal.Title>
+                </Modal.Header>
+
+                <Modal.Body>
+                    <p>Do you really want to reset TOTP for ?</p>
+                    This requires a re-login to take effect for the user.
+                </Modal.Body>
+
+                <Modal.Footer>
+                    <Button onClick={this.hideTOTP} variant="secondary">Cancel</Button>
+                    <Button onClick={this.resetTOTP} variant="danger" disabled={this.state.loading_totp} >{button_totp_name}</Button>
+                </Modal.Footer>
+            </Modal>
             <Modal show={this.state.dialog_delete} onHide={this.hideDelete}>
                 <Modal.Header closeButton>
-                    <Modal.Title>Delete "{name}"</Modal.Title>
+                    <Modal.Title>Delete "{this.state.name}"</Modal.Title>
                 </Modal.Header>
 
                 <Modal.Body>
@@ -269,6 +378,13 @@ export default class User extends React.Component {
                     </ButtonToolbar>
                 </Form.Group>
             </Form>
+            <Row><h3>Authentication</h3></Row>
+            <Row>
+                <ButtonToolbar>
+                    <Button onClick={this.showTOTP} variant="warning">Reset TOTP</Button>
+                    <Button onClick={this.showPassword} className="ml-2" variant="warning">Change Password</Button>
+                </ButtonToolbar>
+            </Row>
             <Row><h3>Permissions of {this.state.name}</h3></Row>
             <Container><ListGroup>{services}</ListGroup></Container>
             <hr />

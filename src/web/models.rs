@@ -55,6 +55,19 @@ pub struct UserMin {
     pub email: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ResetTOTP {
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetPassword {
+    pub password: String,
+    #[serde(default)]
+    pub old_password: Option<String>,
+}
+
 /// json data fragment for SetUserInfo
 #[derive(Debug, Deserialize)]
 pub struct UserMinData {
@@ -72,11 +85,21 @@ impl From<dbmodels::FullUser> for UserMin {
     }
 }
 
+impl From<&dbmodels::FullUser> for UserMin {
+    fn from(user: &dbmodels::FullUser) -> Self {
+        Self {
+            name: user.name.clone(),
+            id: user.id.clone(),
+            email: user.email.clone(),
+        }
+    }
+}
+
 /// Login state sent via API
 #[derive(Debug, Serialize)]
 pub enum LoginState {
     /// Success
-    LoggedIn(String),
+    LoggedIn(UserMin),
     /// Invalid credentials
     NotLoggedIn,
     /// totp-login required

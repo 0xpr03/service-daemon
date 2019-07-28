@@ -178,12 +178,12 @@ impl Handler<LoginTOTP> for UserService {
         if expected_totp == msg.totp {
             login.state = db::models::LoginState::Complete;
             DB.set_login(&msg.session, Some(login))?;
-            let name = user.name.clone();
+            let user_min = UserMin::from(&user);
             if !user.totp_complete {
                 user.totp_complete = true;
                 DB.update_user(user)?;
             }
-            Ok(LoginState::LoggedIn(name))
+            Ok(LoginState::LoggedIn(user_min))
         } else {
             Ok(match user.totp_complete {
                 true => LoginState::RequiresTOTP,
@@ -228,7 +228,7 @@ impl Handler<CheckSession> for UserService {
         use db::models::LoginState as DBLoginState;
         Ok(match DB.get_login(&msg.session, self.login_max_age)? {
             Some(v) => match v.state {
-                DBLoginState::Complete => LoginState::LoggedIn(DB.get_user(v.id)?.name),
+                DBLoginState::Complete => LoginState::LoggedIn(UserMin::from(DB.get_user(v.id)?)),
                 DBLoginState::Missing2Fa => LoginState::RequiresTOTP,
                 DBLoginState::Requires2FaSetup => {
                     LoginState::RequiresTOTPSetup(DB.get_user(v.id)?.totp.into())
@@ -315,10 +315,74 @@ impl Handler<CreateUser> for UserService {
     }
 }
 
+impl Handler<ResetUserTOTP> for UserService {
+    type Result = Result<()>;
+
+    fn handle(&mut self, msg: ResetUserTOTP, _ctx: &mut Context<Self>) -> Self::Result {
+        let invoker_id = self.get_session_uid(&msg.invoker)?;
+        let mut user = DB.get_user(msg.id)?;
+        // foreign account, check admin
+        if invoker_id != msg.id {
+            if !self.is_admin(invoker_id)? {
+                return Err(UserError::InvalidPermissions);
+            }
+        } else {
+            if let Some(pw) = msg.data.password {
+                if !bcrypt_verify(&pw, &user.password)? {
+                    return Err(UserError::InvalidPassword);
+                }
+            } else {
+                return Err(UserError::BadRequest("missing password"));
+            }
+        }
+
+        user.totp = crate::crypto::totp_gen_secret();
+        user.totp_complete = false;
+        DB.update_user(user)?;
+
+        Ok(())
+    }
+}
+
+impl Handler<SetUserPassword> for UserService {
+    type Result = Result<()>;
+
+    fn handle(&mut self, msg: SetUserPassword, _ctx: &mut Context<Self>) -> Self::Result {
+        let invoker_id = self.get_session_uid(&msg.invoker)?;
+        let mut user = DB.get_user(msg.id)?;
+        // foreign account, check admin
+        if invoker_id != msg.id {
+            if !self.is_admin(invoker_id)? {
+                return Err(UserError::InvalidPermissions);
+            }
+        } else {
+            if let Some(pw) = msg.data.old_password {
+                if !bcrypt_verify(&pw, &user.password)? {
+                    return Err(UserError::InvalidPassword);
+                }
+            } else {
+                return Err(UserError::BadRequest("missing password"));
+            }
+        }
+
+        user.password = bcrypt_password(&msg.data.password, self.brcypt_cost)?;
+        DB.update_user(user)?;
+
+        Ok(())
+    }
+}
+
 impl Handler<SetUserInfo> for UserService {
     type Result = Result<()>;
 
     fn handle(&mut self, msg: SetUserInfo, _ctx: &mut Context<Self>) -> Self::Result {
+        let invoker_id = self.get_session_uid(&msg.invoker)?;
+        // foreign account, check admin
+        if invoker_id != msg.user.id {
+            if !self.is_admin(invoker_id)? {
+                return Err(UserError::InvalidPermissions);
+            }
+        }
         let mut user_full = DB.get_user(msg.user.id)?;
         user_full.name = msg.user.name;
         user_full.email = msg.user.email;

@@ -17,7 +17,6 @@ export default class Error extends React.Component {
     }
 
     static getDerivedStateFromProps (props, state) {
-        console.log(props);
         if (props.error !== undefined) {
             if (state.hide) {
                 return { hide: false, lastError: props.error }

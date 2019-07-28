@@ -48,6 +48,10 @@ pub enum UserError {
     SendError(#[cause] MailboxError),
     #[fail(display = "Email already in use")]
     EmailInUse,
+    #[fail(display = "Invalid password for action!")]
+    InvalidPassword,
+    #[fail(display = "Invalid data: {}", _0)]
+    BadRequest(&'static str),
 }
 
 impl ResponseError for UserError {
@@ -56,6 +60,8 @@ impl ResponseError for UserError {
             UserError::EmailInUse => HttpResponse::Conflict().json("email_claimed"),
             UserError::InvalidPermissions => HttpResponse::Unauthorized().json("unauthorized"),
             UserError::InvalidSession => HttpResponse::Unauthorized().json("invalid_session"),
+            UserError::InvalidPassword => HttpResponse::Unauthorized().json("invalid_password"),
+            UserError::BadRequest(msg) => HttpResponse::BadRequest().json(msg),
             v => {
                 error!("{}", v);
                 HttpResponse::InternalServerError().json("Internal Server Error, Please try later")

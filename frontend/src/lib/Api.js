@@ -101,6 +101,14 @@ export function api_delete_user(user) {
     return axios.post("/api/user/"+user+"/delete");
 }
 
+export function api_totp_change(user) {
+    return axios.post("/api/user/"+user+"/totp", {});
+}
+
+export function api_password_change(user, password) {
+    return axios.post("/api/user/"+user+"/password",{password: password });
+}
+
 /// get service permissions of user
 export function api_get_perms (user, service) {
     return axios.get("/api/user/" + user + "/permissions/" + service);
@@ -121,7 +129,7 @@ export function api_service_permissions (service) {
     return axios.get("/api/service/" + service + "/permissions");
 }
 
-/// globa permissions of current session
+/// global permissions of current session
 export function api_global_permissions () {
     return axios.get("/api/");
 }

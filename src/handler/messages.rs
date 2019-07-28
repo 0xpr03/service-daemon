@@ -52,6 +52,32 @@ pub struct LogoutUser {
     pub session: Session,
 }
 
+/// Set a new password, requires admin or the old password
+#[derive(Message)]
+#[rtype(result = "Result<(), UserError>")]
+pub struct SetUserPassword {
+    pub data: SetPassword,
+    pub invoker: Session,
+    pub id: UID,
+}
+
+/// Reset user TOTP, requires admin or the current password
+#[derive(Message)]
+#[rtype(result = "Result<(), UserError>")]
+pub struct ResetUserTOTP {
+    pub data: ResetTOTP,
+    pub invoker: Session,
+    pub id: UID,
+}
+
+/// Set user info, requires user to be admin when requesting for foreign UID
+#[derive(Message)]
+#[rtype(result = "Result<(), UserError>")]
+pub struct SetUserInfo {
+    pub user: UserMin,
+    pub invoker: Session,
+}
+
 /// Create a new user, checked
 #[derive(Message)]
 #[rtype(result = "Result<CreateUserResp, UserError>")]
@@ -249,13 +275,5 @@ pub mod unchecked {
     #[rtype(result = "Result<UserMin, UserError>")]
     pub struct GetUserInfo {
         pub user: UID,
-    }
-
-    /// **Unchecked!** set user info  
-    /// For administration
-    #[derive(Message)]
-    #[rtype(result = "Result<(), UserError>")]
-    pub struct SetUserInfo {
-        pub user: UserMin,
     }
 }

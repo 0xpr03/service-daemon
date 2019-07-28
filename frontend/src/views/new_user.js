@@ -81,8 +81,8 @@ export default class NewUser extends React.Component {
                         <Form.Label>Name</Form.Label>
                         <Form.Control required type="text" name="name" placeholder="Name" value={this.state.name} onChange={this.handleInputChange} />
                     </Form.Group>
-                    <Button onClick={this.onReset}>Reset</Button>
-                    <Button variant="primary" type="submit" disabled={this.state.loading} >{button_submit_name}</Button>
+                    <Button onClick={this.onReset} variant="secondary">Reset</Button>
+                    <Button variant="primary" className="ml-2" type="submit" disabled={this.state.loading} >{button_submit_name}</Button>
                 </Form>
             </Container>
         );
