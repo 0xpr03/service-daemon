@@ -1,4 +1,4 @@
-### Service-Daemon
+### Service-Daemon [![Build Status](https://travis-ci.com/0xpr03/service-daemon.svg?branch=master)](https://travis-ci.com/0xpr03/service-daemon)
 
 ***Currently in development and not production ready!***
 
