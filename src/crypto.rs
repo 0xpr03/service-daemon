@@ -1,6 +1,5 @@
 use rand::thread_rng;
 use rand::Rng;
-// use crate::db::models::{TOTP,TOTP_Mode};
 use crate::db::models::*;
 use bcrypt::{hash, verify, BcryptResult};
 use data_encoding::BASE32;
@@ -39,10 +38,16 @@ pub fn totp_calculate(totp: &TOTP) -> u64 {
     )
 }
 
+/// Hash password with bcrypt with given cost, blocking
+///
+/// Call with actix_threadpool inside actix async routines
 pub fn bcrypt_password(password: &str, cost: u32) -> BcryptResult<String> {
     hash(password, cost)
 }
 
+/// verify password with bcrypt hash, blocking
+///
+/// Not to be used directly.
 pub fn bcrypt_verify(password: &str, hash: &str) -> BcryptResult<bool> {
     let start = std::time::Instant::now();
     let res = verify(password, hash);

@@ -85,7 +85,7 @@ pub fn change_totp(
     let identity = get_session!(id);
     Either::A(
         UserService::from_registry()
-            .send(ResetUserTOTP{
+            .send(ResetUserTOTP {
                 invoker: identity,
                 data: data.into_inner(),
                 id: item.user,
@@ -94,7 +94,7 @@ pub fn change_totp(
             .map(move |res| match res {
                 Ok(_) => HttpResponse::NoContent().finish(),
                 Err(e) => e.error_response(),
-            })
+            }),
     )
 }
 

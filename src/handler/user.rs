@@ -7,11 +7,14 @@ use crate::db::{models::*, DBInterface, DB};
 use crate::handler::service::ServiceController;
 use crate::web::models::{CreateUserResp, LoginState, NewUser, UserMin, UID};
 use actix;
+use actix::fut::*;
 use actix::prelude::*;
+use actix_threadpool::run as blocking;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use std::iter;
 
+/// Initial root user
 const ROOT_NAME: &'static str = "Root";
 const ROOT_EMAIL: &'static str = "root@localhost";
 const ROOT_PASSWORD_LENGTH: usize = 20;
@@ -58,8 +61,8 @@ impl UserService {
                 Err(e) => Err(e.into()),
             })
             .map_err(|e| {
-                error!("Unable to initialize admin permissions! {}", e);
-                ()
+                error!("Unable to initialize admin permissions, aborting! {}", e);
+                panic!("Can't init admin permissions, aborting");
             });
         actix::spawn(fut);
     }
@@ -194,30 +197,48 @@ impl Handler<LoginTOTP> for UserService {
 }
 
 impl Handler<LoginUser> for UserService {
-    type Result = Result<LoginState>;
+    type Result = ResponseActFuture<Self, LoginState, UserError>;
 
     fn handle(&mut self, msg: LoginUser, _ctx: &mut Context<Self>) -> Self::Result {
-        DB.set_login(&msg.session, None)?;
-        let uid = match DB.get_id_by_email(&msg.email)? {
-            Some(v) => v,
-            None => return Ok(LoginState::NotLoggedIn),
-        };
-        let user = DB.get_user(uid)?;
-        if bcrypt_verify(&msg.password, &user.password)? {
-            let state = match user.totp_complete {
-                true => db::models::LoginState::Missing2Fa,
-                false => db::models::LoginState::Requires2FaSetup,
-            };
-            DB.set_login(&msg.session, Some(ActiveLogin { state, id: uid }))?;
-            if user.totp_complete {
-                Ok(LoginState::RequiresTOTP)
-            } else {
-                Ok(LoginState::RequiresTOTPSetup(user.totp.into()))
-            }
-        } else {
-            DB.set_login(&msg.session, None)?;
-            Ok(LoginState::NotLoggedIn)
+        if let Err(e) = DB.set_login(&msg.session, None) {
+            return Box::new(err(e.into()));
         }
+        let uid = match DB.get_id_by_email(&msg.email) {
+            Ok(Some(v)) => v,
+            Ok(None) => return Box::new(ok(LoginState::NotLoggedIn)),
+            Err(e) => return Box::new(err(e.into())),
+        };
+        let user = match DB.get_user(uid) {
+            Ok(u) => u,
+            Err(e) => return Box::new(err(e.into())),
+        };
+
+        let fut = blocking(move || bcrypt_verify(&msg.password, &user.password).map(|v| (v, msg, user)));
+        let fut = actix::fut::wrap_future::<_, Self>(fut)
+            .map_err(|e,_,_| e.into())
+            .and_then(move|(v,msg, user),_,_| {
+                if v {
+                    let state = match user.totp_complete {
+                        true => db::models::LoginState::Missing2Fa,
+                        false => db::models::LoginState::Requires2FaSetup,
+                    };
+                    if let Err(e) = DB.set_login(&msg.session, Some(ActiveLogin { state, id: uid }))
+                    {
+                        return Either::B(err(e.into()));
+                    }
+                    if user.totp_complete {
+                        Either::A(Either::A(ok(LoginState::RequiresTOTP)))
+                    } else {
+                        Either::A(Either::B(ok(LoginState::RequiresTOTPSetup(user.totp.into()))))
+                    }
+                } else {
+                    if let Err(e) = DB.set_login(&msg.session, None) {
+                        return Either::B(err(e.into()));
+                    }
+                    Either::B(ok(LoginState::NotLoggedIn))
+                }
+            });
+        Box::new(fut)
     }
 }
 

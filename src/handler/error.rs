@@ -3,6 +3,7 @@ use crate::web::models::SID;
 use actix::MailboxError;
 use actix_web::{error::ResponseError, HttpResponse};
 use bcrypt::BcryptError;
+use actix_threadpool::BlockingError;
 
 #[derive(Fail, Debug)]
 pub enum StartupError {
@@ -66,6 +67,15 @@ impl ResponseError for UserError {
                 error!("{}", v);
                 HttpResponse::InternalServerError().json("Internal Server Error, Please try later")
             }
+        }
+    }
+}
+
+impl From<BlockingError<bcrypt::BcryptError>> for UserError {
+    fn from(error: BlockingError<bcrypt::BcryptError>) -> Self {
+        match error {
+            BlockingError::Error(e) => UserError::HashError(e),
+            BlockingError::Canceled => UserError::InternalError(String::from("BCrypt blocking process canceled!")),
         }
     }
 }
