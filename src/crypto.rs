@@ -1,9 +1,9 @@
-use rand::thread_rng;
-use rand::Rng;
 use crate::db::models::*;
 use bcrypt::{hash, verify, BcryptResult};
 use data_encoding::BASE32;
 use oath::{totp_raw_now, HashType};
+use rand::thread_rng;
+use rand::Rng;
 
 const TOTP_SECRET_LENGTH: usize = 64;
 const TOTP_DIGITS: u32 = 8;

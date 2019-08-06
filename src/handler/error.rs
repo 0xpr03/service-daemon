@@ -1,9 +1,9 @@
 use crate::db;
 use crate::web::models::SID;
 use actix::MailboxError;
+use actix_threadpool::BlockingError;
 use actix_web::{error::ResponseError, HttpResponse};
 use bcrypt::BcryptError;
-use actix_threadpool::BlockingError;
 
 #[derive(Fail, Debug)]
 pub enum StartupError {
@@ -75,7 +75,9 @@ impl From<BlockingError<bcrypt::BcryptError>> for UserError {
     fn from(error: BlockingError<bcrypt::BcryptError>) -> Self {
         match error {
             BlockingError::Error(e) => UserError::HashError(e),
-            BlockingError::Canceled => UserError::InternalError(String::from("BCrypt blocking process canceled!")),
+            BlockingError::Canceled => {
+                UserError::InternalError(String::from("BCrypt blocking process canceled!"))
+            }
         }
     }
 }

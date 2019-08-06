@@ -213,10 +213,11 @@ impl Handler<LoginUser> for UserService {
             Err(e) => return Box::new(err(e.into())),
         };
 
-        let fut = blocking(move || bcrypt_verify(&msg.password, &user.password).map(|v| (v, msg, user)));
+        let fut =
+            blocking(move || bcrypt_verify(&msg.password, &user.password).map(|v| (v, msg, user)));
         let fut = actix::fut::wrap_future::<_, Self>(fut)
-            .map_err(|e,_,_| e.into())
-            .and_then(move|(v,msg, user),_,_| {
+            .map_err(|e, _, _| e.into())
+            .and_then(move |(v, msg, user), _, _| {
                 if v {
                     let state = match user.totp_complete {
                         true => db::models::LoginState::Missing2Fa,
@@ -229,7 +230,9 @@ impl Handler<LoginUser> for UserService {
                     if user.totp_complete {
                         Either::A(Either::A(ok(LoginState::RequiresTOTP)))
                     } else {
-                        Either::A(Either::B(ok(LoginState::RequiresTOTPSetup(user.totp.into()))))
+                        Either::A(Either::B(ok(LoginState::RequiresTOTPSetup(
+                            user.totp.into(),
+                        ))))
                     }
                 } else {
                     if let Err(e) = DB.set_login(&msg.session, None) {
