@@ -14,6 +14,10 @@ bcrypt_cost = 10
 [web]
 # 1 day 60*60*24
 max_session_age_secs = 86400
+# Bind IP, use 0.0.0.0 for anywhere
+bind_ip = "127.0.0.1"
+# Bind port
+bind_port = 9000
 
 [[services]]
 # ID is required to bind user permissions

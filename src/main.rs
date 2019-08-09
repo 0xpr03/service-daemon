@@ -71,7 +71,7 @@ fn main() -> Fallible<()> {
         .map(|_| ())
         .map_err(|e| error!("User-Service startup check failed! {}", e));
     actix::spawn(crypto_setup);
-    let _ = web::start(settings.web.domain, settings.web.max_session_age_secs);
+    let _ = web::start(&settings.web, settings.web.max_session_age_secs);
     sys.run()?;
 
     Ok(())

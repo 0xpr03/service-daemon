@@ -3,6 +3,7 @@ pub mod api;
 pub mod models;
 pub mod websocket;
 
+use crate::settings::Web;
 use actix_files as fs;
 use actix_identity::*;
 use actix_web::cookie::SameSite;
@@ -10,7 +11,7 @@ use actix_web::dev::Server;
 use actix_web::middleware::Logger;
 use actix_web::{guard, web, App, HttpResponse, HttpServer};
 
-pub fn start(domain: String, max_age_secs: i64) -> std::io::Result<Server> {
+pub fn start(config: &Web, max_age_secs: i64) -> std::io::Result<Server> {
     //TODO: add CORS
     Ok(HttpServer::new(move || {
         App::new()
@@ -72,6 +73,6 @@ pub fn start(domain: String, max_age_secs: i64) -> std::io::Result<Server> {
     })
     // let ServiceController handle signals
     // .disable_signals()
-    .bind("127.0.0.1:9000")?
+    .bind(format!("{}:{}",config.bind_ip,config.bind_port))?
     .start())
 }

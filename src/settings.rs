@@ -27,9 +27,9 @@ pub struct Settings {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Web {
-    #[serde(default)]
-    pub domain: String,
     pub max_session_age_secs: i64,
+    pub bind_ip: String,
+    pub bind_port: u16,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -127,8 +127,9 @@ mod tests {
                 bcrypt_cost: 10,
             },
             web: Web {
-                domain: String::from("example.com"),
                 max_session_age_secs: 60,
+                bind_ip: String::from("127.0.0.1"),
+                bind_port: 9000,
             },
             services: vec![
                 Service {
