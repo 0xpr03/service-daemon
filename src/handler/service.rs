@@ -86,7 +86,6 @@ impl Handler<StartService> for ServiceController {
                 }
                 trace!("starting..");
                 if let Err(e) = instance.run(ctx.address()) {
-                    error!("Can't start instance: {}", e);
                     return Err(ControllerError::StartupIOError(e).into());
                 }
                 trace!("started");
@@ -322,10 +321,15 @@ impl Handler<LoadServices> for ServiceController {
             for (key, val) in self.services.iter() {
                 if val.model.autostart {
                     trace!("Autostarting {}", key);
+                    let key = key.clone();
                     spawn(
                         ctx.address()
-                            .send(StartService { id: key.clone() })
-                            .map(|v| debug!("{:?}", v))
+                            .send(StartService { id: key })
+                            .map(move |v| {
+                                if let Err(e) = v {
+                                    error!("Starting instance {}: {}", key.clone(), e);
+                                }
+                            })
                             .map_err(|e| panic!("{}", e)),
                     );
                 }
@@ -407,7 +411,20 @@ impl Instance {
             .as_ref()
             .map_or(0, |v| get_system_time_64() - v)
     }
+    /// Run instance, outer catch function to log startup errors to tty
     fn run(&mut self, addr: Addr<ServiceController>) -> Result<(), ::std::io::Error> {
+        let res = self.run_internal(addr);
+        if let Err(e) = &res {
+            let mut buffer_w = self.tty.write().expect("Can't write buffer!");
+            buffer_w.push_back(LogType::State(
+                format!("Can't start instance: {}", e).into_bytes(),
+            ));
+            drop(buffer_w);
+        }
+        res
+    }
+    /// real service starter
+    fn run_internal(&mut self, addr: Addr<ServiceController>) -> Result<(), ::std::io::Error> {
         if self.model.enabled
             && !self
                 .running
