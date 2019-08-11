@@ -11,9 +11,10 @@ password_min_length = 10
 bcrypt_cost = 10
 
 [web]
-domain = "localhost"
 # 1 day 60*60*24
 max_session_age_secs = 86400
+bind_ip = "127.0.0.1"
+bind_port = 9000
 
 [[services]]
 id = 0
