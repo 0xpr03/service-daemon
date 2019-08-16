@@ -169,6 +169,7 @@ impl Handler<ServiceStateChanged> for ServiceController {
     fn handle(&mut self, msg: ServiceStateChanged, ctx: &mut Context<Self>) {
         if let Some(instance) = self.services.get_mut(&msg.id) {
             if !msg.running {
+                instance.end_time = Some(get_system_time_64());
                 let mut restart =
                     instance.model.restart && instance.state.get_state() == State::Crashed;
                 if instance.model.restart_always && instance.state.get_state() == State::Ended {
@@ -348,6 +349,7 @@ struct Instance {
     kill_handle: Option<futures::sync::oneshot::Sender<()>>,
     stdin: Option<futures::sync::mpsc::Sender<String>>,
     start_time: Option<u64>,
+    end_time: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -407,9 +409,13 @@ impl From<usize> for State {
 
 impl Instance {
     fn uptime(&self) -> u64 {
+        let subtrahend = match self.end_time {
+            Some(v) => v,
+            None => get_system_time_64()
+        };
         self.start_time
             .as_ref()
-            .map_or(0, |v| get_system_time_64() - v)
+            .map_or(0, |v| subtrahend - v)
     }
     /// Run instance, outer catch function to log startup errors to tty
     fn run(&mut self, addr: Addr<ServiceController>) -> Result<(), ::std::io::Error> {
@@ -449,6 +455,7 @@ impl Instance {
             self.state.set_state(State::Running);
             let mut child = cmd.spawn_async()?;
             self.start_time = Some(get_system_time_64());
+            self.end_time = None;
 
             addr.do_send(ServiceStateChanged {
                 id: self.model.id,
@@ -607,6 +614,7 @@ impl From<Service> for Instance {
             kill_handle: None,
             stdin: None,
             start_time: None,
+            end_time: None,
         }
     }
 }
