@@ -71,7 +71,7 @@ impl Settings {
             s.merge(File::with_name(f))?;
         } else {
             s.merge(File::with_name("config/default"))?;
-            s.merge(Environment::with_prefix("sc"))?;
+            s.merge(Environment::with_prefix("sd"))?;
         }
         let mut config: Self = s.try_into()?;
 
