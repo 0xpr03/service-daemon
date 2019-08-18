@@ -26,11 +26,11 @@ macro_rules! check_admin {
         if let Some(session) = $session {
             Either::A(
                 UserService::from_registry()
-                    .send(GetManagementPerm { session: session })
+                    .send(GetAdminPerm { session: session })
                     .map_err(Error::from)
                     .and_then(move |res| match res {
-                        Ok(perms) => {
-                            if perms.admin {
+                        Ok(admin) => {
+                            if admin {
                                 Either::A($cmd())
                             } else {
                                 Either::B(Either::A(ok(
@@ -160,11 +160,8 @@ pub fn set_user_info(
     Either::A(
         UserService::from_registry()
             .send(SetUserInfo {
-                user: UserMin {
-                    id: item.user,
-                    name: data.name,
-                    email: data.email,
-                },
+                data,
+                user: item.user,
                 invoker: identity,
             })
             .map_err(Error::from)
@@ -307,7 +304,7 @@ pub fn session_permissions(id: Identity) -> impl Future<Item = HttpResponse, Err
     if let Some(session) = id.identity() {
         Either::A(
             UserService::from_registry()
-                .send(GetManagementPerm { session })
+                .send(GetAdminPerm { session })
                 .map_err(Error::from)
                 .map(|response| match response {
                     Ok(v) => HttpResponse::Ok().json(v),

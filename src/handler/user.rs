@@ -74,7 +74,7 @@ impl UserService {
         }
     }
     fn is_admin(&self, user: UID) -> Result<bool> {
-        Ok(DB.get_perm_man(user)?.admin)
+        Ok(DB.get_user(user)?.admin)
     }
     /// Check if user is admin, errors otherwise
     fn check_admin(&self, user: UID) -> Result<()> {
@@ -140,7 +140,9 @@ impl Handler<StartupCheck> for UserService {
                     assert_eq!(uid, DB.get_root_id());
                     let end = start.elapsed().as_millis();
 
-                    DB.set_perm_man(uid, &ManagementPerm { admin: true })?;
+                    let mut user_full = DB.get_user(uid)?;
+                    user_full.admin = true;
+                    DB.update_user(user_full)?;
 
                     if end > 2_000 {
                         warn!(
@@ -276,12 +278,12 @@ impl Handler<GetSessionServiceIDs> for UserService {
     }
 }
 
-impl Handler<GetManagementPerm> for UserService {
-    type Result = Result<ManagementPerm>;
+impl Handler<GetAdminPerm> for UserService {
+    type Result = Result<bool>;
 
-    fn handle(&mut self, msg: GetManagementPerm, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: GetAdminPerm, _ctx: &mut Context<Self>) -> Self::Result {
         let uid = self.get_session_uid(&msg.session)?;
-        Ok(DB.get_perm_man(uid)?)
+        Ok(DB.get_user(uid)?.admin)
     }
 }
 
@@ -402,14 +404,14 @@ impl Handler<SetUserInfo> for UserService {
     fn handle(&mut self, msg: SetUserInfo, _ctx: &mut Context<Self>) -> Self::Result {
         let invoker_id = self.get_session_uid(&msg.invoker)?;
         // foreign account, check admin
-        if invoker_id != msg.user.id {
+        if invoker_id != msg.user {
             if !self.is_admin(invoker_id)? {
                 return Err(UserError::InvalidPermissions);
             }
         }
-        let mut user_full = DB.get_user(msg.user.id)?;
-        user_full.name = msg.user.name;
-        user_full.email = msg.user.email;
+        let mut user_full = DB.get_user(msg.user)?;
+        user_full.name = msg.data.name;
+        user_full.email = msg.data.email;
         DB.update_user(user_full)?;
         Ok(())
     }

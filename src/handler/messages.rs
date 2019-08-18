@@ -1,5 +1,5 @@
 use super::error::*;
-use crate::db::models::{ManagementPerm, ServicePerm};
+use crate::db::models::ServicePerm;
 use crate::handler::service::{LogType, State};
 use crate::settings::Service;
 use crate::web::models::*;
@@ -74,7 +74,8 @@ pub struct ResetUserTOTP {
 #[derive(Message)]
 #[rtype(result = "Result<(), UserError>")]
 pub struct SetUserInfo {
-    pub user: UserMin,
+    pub data: UserMinData,
+    pub user: UID,
     pub invoker: Session,
 }
 
@@ -101,11 +102,11 @@ pub struct GetSessionServiceIDs {
     pub session: Session,
 }
 
-/// Get permissions of session for management
+/// Get permissions of session for administration
 /// Returns error if no valid session is found
 #[derive(Message)]
-#[rtype(result = "Result<ManagementPerm, UserError>")]
-pub struct GetManagementPerm {
+#[rtype(result = "Result<bool, UserError>")]
+pub struct GetAdminPerm {
     pub session: Session,
 }
 

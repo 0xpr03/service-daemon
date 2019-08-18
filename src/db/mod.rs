@@ -52,10 +52,6 @@ pub trait DBInterface: Sized {
     fn get_users(&self) -> Result<Vec<UserMin>>;
     /// Get all admin UIDs
     fn get_perm_admin(&self) -> Result<Vec<UID>>;
-    /// Get user permissions for management
-    fn get_perm_man(&self, id: UID) -> Result<ManagementPerm>;
-    /// Set user permissions for management
-    fn set_perm_man(&self, id: UID, perm: &ManagementPerm) -> Result<()>;
     /// Get user permissions for a service
     fn get_perm_service(&self, id: UID, service: SID) -> Result<ServicePerm>;
     /// Get all service permissions of a user
@@ -138,15 +134,13 @@ mod test {
         assert_eq!(full_user.password, user_new.password_enc);
         assert_eq!(full_user.email, user_new.email);
         assert_eq!(full_user.totp_complete, false);
+        assert_eq!(false, full_user.admin);
         assert!(!full_user.totp.secret.is_empty());
 
         let uid_mail = db.get_id_by_email(&user_new.email).unwrap();
         assert_eq!(Some(full_user.id), uid_mail);
 
         assert_eq!(1, db.get_users().unwrap().len());
-
-        let perm_man = db.get_perm_man(full_user.id).unwrap();
-        assert_eq!(false, perm_man.admin);
     }
 
     #[test]
@@ -295,12 +289,6 @@ mod test {
     }
 
     #[test]
-    fn test_perm_man_unknown() {
-        let db = gen_db();
-        assert_eq!(false, db.get_perm_man(1).unwrap().admin);
-    }
-
-    #[test]
     fn test_perm_service() {
         let db = gen_db();
         let (_, full_user) = create_user(&db);
@@ -310,11 +298,12 @@ mod test {
     }
 
     #[test]
-    fn test_perm_man() {
+    fn test_perm_admin() {
         let db = gen_db();
-        let (_, full_user) = create_user(&db);
-        let perm = ManagementPerm { admin: true };
-        db.set_perm_man(full_user.id, &perm).unwrap();
-        assert_eq!(perm, db.get_perm_man(full_user.id).unwrap());
+        let (_, mut full_user) = create_user(&db);
+        let id = full_user.id.clone();
+        full_user.admin = true;
+        db.update_user(full_user).unwrap();
+        assert_eq!(true, db.get_user(id).unwrap().admin);
     }
 }

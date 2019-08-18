@@ -30,6 +30,7 @@ pub struct FullUser {
     pub totp: TOTP,
     /// TOTP setup complete
     pub totp_complete: bool,
+    pub admin: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -75,18 +76,6 @@ impl From<oath::HashType> for TOTP_Mode {
             oath::HashType::SHA256 => TOTP_Mode::SHA256,
             oath::HashType::SHA512 => TOTP_Mode::SHA512,
         }
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[cfg_attr(test, derive(Clone, PartialEq))]
-pub struct ManagementPerm {
-    pub admin: bool,
-}
-
-impl Default for ManagementPerm {
-    fn default() -> Self {
-        Self { admin: false }
     }
 }
 

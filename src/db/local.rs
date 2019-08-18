@@ -65,8 +65,6 @@ mod tree {
     pub const META: &'static str = "META";
     /// "UID_SID"<->ServicePerm
     pub const PERMISSION_SERVICE: &'static str = "PERMISSIONS_SERVICE";
-    /// "UID"<->ManPerm
-    pub const PERMISSION_MANAGEMENT: &'static str = "PERMISSIONS_MANAGEMENT";
     /// session String<->UID
     pub const LOGINS: &'static str = "LOGINS";
     /// session String<->u64 time
@@ -162,6 +160,7 @@ impl DB {
             password: new_user.password_enc,
             totp: crypto::totp_gen_secret(),
             totp_complete: false,
+            admin: false,
         };
         self.open_tree(tree::USER)?.set(ser!(id), ser!(user))?;
         self.open_tree(tree::REL_MAIL_UID)?
@@ -230,9 +229,9 @@ impl super::DBInterface for DB {
 
     fn get_perm_admin(&self) -> Result<Vec<UID>> {
         let mut vec = Vec::new();
-        for val in self.open_tree(tree::PERMISSION_MANAGEMENT)?.iter() {
-            let (uid_r, perm_r) = val?;
-            if deserialize::<ManagementPerm>(&perm_r)?.admin {
+        for val in self.open_tree(tree::USER)?.iter() {
+            let (uid_r, user_r) = val?;
+            if deserialize::<FullUser>(&user_r)?.admin {
                 vec.push(deserialize(&uid_r)?);
             }
         }
@@ -271,18 +270,6 @@ impl super::DBInterface for DB {
         } else {
             tree.set(&key, ser!(new_perms))?;
         }
-        Ok(())
-    }
-
-    fn get_perm_man(&self, id: UID) -> Result<ManagementPerm> {
-        match self.open_tree(tree::PERMISSION_MANAGEMENT)?.get(ser!(id))? {
-            Some(v) => Ok(deserialize(&v)?),
-            None => Ok(ManagementPerm::default()),
-        }
-    }
-    fn set_perm_man(&self, id: UID, perm: &ManagementPerm) -> Result<()> {
-        self.open_tree(tree::PERMISSION_MANAGEMENT)?
-            .set(ser!(id), ser!(perm))?;
         Ok(())
     }
 

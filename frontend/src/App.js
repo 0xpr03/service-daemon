@@ -40,7 +40,7 @@ function Navgiation (props) {
                 <Nav.Link as={NavLink} to="/" exact>
                   Services
               </Nav.Link>
-                <Nav.Link as={NavLink} to="/users">Users</Nav.Link>
+              { user.admin && <Nav.Link as={NavLink} to="/users">Users</Nav.Link> }
               </Nav>
               <Nav style={{ "marginRight": "2em" }}>
                 <NavDropdown title={user.name} id="collasible-nav-dropdown">

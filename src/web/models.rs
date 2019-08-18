@@ -53,6 +53,7 @@ pub struct UserMin {
     pub name: String,
     pub id: UID,
     pub email: String,
+    pub admin: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -81,6 +82,7 @@ impl From<dbmodels::FullUser> for UserMin {
             name: user.name,
             id: user.id,
             email: user.email,
+            admin: user.admin,
         }
     }
 }
@@ -89,8 +91,9 @@ impl From<&dbmodels::FullUser> for UserMin {
     fn from(user: &dbmodels::FullUser) -> Self {
         Self {
             name: user.name.clone(),
-            id: user.id.clone(),
+            id: user.id,
             email: user.email.clone(),
+            admin: user.admin,
         }
     }
 }
