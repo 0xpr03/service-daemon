@@ -158,6 +158,7 @@ impl ResponseError for ControllerError {
             ControllerError::ServiceStopped => {
                 HttpResponse::Conflict().body("Instance already running!")
             }
+            ControllerError::UserError(u) => u.error_response(),
             ControllerError::BrokenPipe => HttpResponse::InternalServerError().body("Broken pipe!"),
             v => {
                 error!("{}", v);

@@ -411,11 +411,9 @@ impl Instance {
     fn uptime(&self) -> u64 {
         let subtrahend = match self.end_time {
             Some(v) => v,
-            None => get_system_time_64()
+            None => get_system_time_64(),
         };
-        self.start_time
-            .as_ref()
-            .map_or(0, |v| subtrahend - v)
+        self.start_time.as_ref().map_or(0, |v| subtrahend - v)
     }
     /// Run instance, outer catch function to log startup errors to tty
     fn run(&mut self, addr: Addr<ServiceController>) -> Result<(), ::std::io::Error> {

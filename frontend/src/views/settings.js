@@ -120,8 +120,7 @@ export default class Settings extends React.Component {
                 </Form.Group>
             </Form>
             <Form onSubmit={this.changePassword}>
-                {/* TODO: make success repeatable */}
-                {this.state.password_mismatch && <Alert onClose={this.hide} dismissible variant="warn">New passwords don't match.</Alert>}
+                {this.state.password_mismatch && <Alert onClose={this.hide} dismissible variant="warning">New passwords don't match.</Alert>}
                 {this.state.password_changed && <Alert onClose={this.hide} dismissible variant="success">Password changed successfully.</Alert>}
                 <Form.Group>
                     <Form.Label className="formBold">

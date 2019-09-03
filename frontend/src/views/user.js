@@ -115,27 +115,27 @@ export default class User extends React.Component {
     }
 
     hideDelete () {
-        this.setState({dialog_delete: false});
+        this.setState({ dialog_delete: false });
     }
 
     showDelete () {
-        this.setState({dialog_delete: true});
+        this.setState({ dialog_delete: true });
     }
 
     showTOTP () {
-        this.setState({dialog_totp: true});
+        this.setState({ dialog_totp: true });
     }
 
     hideTOTP () {
-        this.setState({dialog_totp: false});
+        this.setState({ dialog_totp: false });
     }
 
     showPassword () {
-        this.setState({dialog_password: true});
+        this.setState({ dialog_password: true });
     }
 
     hidePassword () {
-        this.setState({dialog_password: false});
+        this.setState({ dialog_password: false });
     }
 
     setPermission (event) {
@@ -175,40 +175,40 @@ export default class User extends React.Component {
     }
 
     deleteUser () {
-        this.setState({loading_delete: true});
+        this.setState({ loading_delete: true });
         api_delete_user(this.getUID())
             .then(() => {
                 this.props.history.push('/users');
             })
             .catch(err => {
-                this.setState({error: "Unable to delete user: "+err, loading_delete: false});
+                this.setState({ error: "Unable to delete user: " + err, loading_delete: false });
             });
     }
 
     resetTOTP () {
-        this.setState({loading_totp: true});
+        this.setState({ loading_totp: true });
         api_totp_change(this.getUID())
             .then(() => {
-                this.setState({loading_totp: false, dialog_totp: false});
+                this.setState({ loading_totp: false, dialog_totp: false });
             })
             .catch(err => {
-                this.setState({error: "Unable to reset TOTP: "+err, loading_totp: false});
+                this.setState({ error: "Unable to reset TOTP: " + err, loading_totp: false });
             });
     }
 
     changePassword (event) {
         event.preventDefault();
-        if ( this.state.new_password !== this.state.new_password_repeat ) {
-            this.setState({password_mismatch: true});
+        if (this.state.new_password !== this.state.new_password_repeat) {
+            this.setState({ password_mismatch: true });
             return;
         }
-        this.setState({loading_password: true});
+        this.setState({ loading_password: true });
         api_password_change_admin(this.getUID(), this.state.new_password)
             .then(() => {
-                this.setState({loading_password: false, dialog_password: false, password_mismatch: false});
+                this.setState({ loading_password: false, dialog_password: false, password_mismatch: false });
             })
             .catch(err => {
-                this.setState({error: "Unable to reset TOTP: "+err, loading_password: false});
+                this.setState({ error: "Unable to change password: " + err, loading_password: false });
             });
     }
 
@@ -274,12 +274,12 @@ export default class User extends React.Component {
                 <Modal.Header closeButton>
                     <Modal.Title>Change password of "{this.state.name}"</Modal.Title>
                 </Modal.Header>
-                
+
                 <Form onSubmit={this.changePassword}>
                     <Modal.Body>
-                        { this.state.password_mismatch && (
+                        {this.state.password_mismatch && (
                             <Alert variant="danger">Passwords mismatching</Alert>
-                        ) }
+                        )}
                         <p>Please specify a new password for this user:</p>
                         <Form.Group controlId="formGroupPassword">
                             <Form.Label>Password</Form.Label>

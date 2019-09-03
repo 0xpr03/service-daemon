@@ -183,7 +183,7 @@ mod test {
     }
 
     #[test]
-    fn test_createion_email_duplicate() {
+    fn test_creation_email_duplicate() {
         let db = gen_db();
         let (_, full_user) = create_user(&db);
         let new_user = NewUserEnc {
