@@ -10,6 +10,7 @@ import Button from "react-bootstrap/Button";
 import Error from "../components/error";
 import Form from "react-bootstrap/Form";
 import Alert from "react-bootstrap/Alert";
+import { UserContext } from '../user-context';
 import { api_services_user, api_get_user_info, api_get_perms, Permissions, api_set_perms, api_set_user_info, api_delete_user, api_totp_change, api_password_change_admin } from "../lib/Api";
 
 function ServiceEntry (props) {
@@ -263,6 +264,10 @@ export default class User extends React.Component {
 
         const perms = this.state.dialog_permission;
 
+        // UID in path is string, not number
+        // eslint-disable-next-line
+        const same_user = this.getUID() == this.context.user.id;
+
         return (<Container>
             <Error error={this.state.error} />
             <Modal show={this.state.dialog_password} onHide={this.hidePassword}>
@@ -379,16 +384,21 @@ export default class User extends React.Component {
                 </Form.Group>
             </Form>
             <Row><h3>Authentication</h3></Row>
+            {same_user && (
+                <Row><Alert variant="danger">You can't edit your own account. Please use your settings.</Alert></Row>
+            )}
             <Row>
                 <ButtonToolbar>
-                    <Button onClick={this.showTOTP} variant="warning">Reset TOTP</Button>
-                    <Button onClick={this.showPassword} className="ml-2" variant="warning">Change Password</Button>
+                    <Button onClick={this.showTOTP} disabled={same_user} variant="warning">Reset TOTP</Button>
+                    <Button onClick={this.showPassword} disabled={same_user} className="ml-2" variant="warning">Change Password</Button>
                 </ButtonToolbar>
             </Row>
             <Row><h3>Permissions of {this.state.name}</h3></Row>
             <Container><ListGroup>{services}</ListGroup></Container>
             <hr />
-            <Row><Col><Button onClick={this.showDelete} variant="danger">Delete User</Button></Col></Row>
+            <Row><Col><Button onClick={this.showDelete} disabled={same_user} variant="danger">Delete User</Button></Col></Row>
         </Container>)
     }
 }
+
+User.contextType = UserContext;
