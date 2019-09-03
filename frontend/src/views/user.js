@@ -10,7 +10,7 @@ import Button from "react-bootstrap/Button";
 import Error from "../components/error";
 import Form from "react-bootstrap/Form";
 import Alert from "react-bootstrap/Alert";
-import { api_services_user, api_get_user_info, api_get_perms, Permissions, api_set_perms, api_set_user_info, api_delete_user, api_totp_change, api_password_change } from "../lib/Api";
+import { api_services_user, api_get_user_info, api_get_perms, Permissions, api_set_perms, api_set_user_info, api_delete_user, api_totp_change, api_password_change_admin } from "../lib/Api";
 
 function ServiceEntry (props) {
     let badge = null;
@@ -202,7 +202,7 @@ export default class User extends React.Component {
             return;
         }
         this.setState({loading_password: true});
-        api_password_change(this.getUID(), this.state.new_password)
+        api_password_change_admin(this.getUID(), this.state.new_password)
             .then(() => {
                 this.setState({loading_password: false, dialog_password: false, password_mismatch: false});
             })

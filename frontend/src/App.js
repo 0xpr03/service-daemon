@@ -12,6 +12,7 @@ import User from "./views/user";
 import Container from "react-bootstrap/Container";
 import Logout from "./views/logout";
 import Service from "./views/service";
+import Settings from "./views/settings";
 import NewUser from "./views/new_user";
 import Overview from "./views/overview";
 import { NavDropdown, Navbar, Nav } from "react-bootstrap";
@@ -44,7 +45,7 @@ function Navgiation (props) {
               </Nav>
               <Nav style={{ "marginRight": "2em" }}>
                 <NavDropdown title={user.name} id="collasible-nav-dropdown">
-                  {/* <NavDropdown.Item as={NavLink} to="/settings">Settings</NavDropdown.Item> */}
+                  <NavDropdown.Item as={NavLink} to="/settings">Settings</NavDropdown.Item>
                   <NavDropdown.Item as={NavLink} to="/logout/">Logout</NavDropdown.Item>
                 </NavDropdown>
               </Nav>
@@ -90,9 +91,17 @@ export default class App extends React.Component {
       this.setState({ user });
     };
 
+    this.updateInfo = (name,email) => {
+      let user = this.state.user;
+      user.name = name;
+      user.email = email;
+      this.setState({user});
+    }
+
     this.state = {
       user: undefined,
       setUser: this.setUser,
+      updateInfo: this.updateInfo,
     };
   }
 
@@ -109,6 +118,7 @@ export default class App extends React.Component {
             <PrivateRoute path="/service/:service" exact component={Service} />
             <PrivateRoute path="/service/:service/console" component={IO} />
             <PrivateRoute path="/about/" component={About} />
+            <PrivateRoute path="/settings/" component={Settings} />
             <PrivateRoute path="/users/" component={Users} />
             <PrivateRoute path="/new/user/" component={NewUser} />
             <PrivateRoute path="/user/:user" component={User} />

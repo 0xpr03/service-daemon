@@ -22,3 +22,15 @@ body,html{
 .card-main {
   overflow: hidden;
 }
+
+.header {
+  border-bottom: 1px solid #e1e4e8;
+}
+
+.header > h2 {
+  font-weight: normal;
+}
+
+.formBold {
+  font-weight: 600;
+}

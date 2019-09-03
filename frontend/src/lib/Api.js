@@ -105,8 +105,14 @@ export function api_totp_change(user) {
     return axios.post("/api/user/"+user+"/totp", {});
 }
 
-export function api_password_change(user, password) {
-    return axios.post("/api/user/"+user+"/password",{password: password });
+/// Change password for other user without previous password
+export function api_password_change_admin(user, password) {
+    return axios.post("/api/user/"+user+"/password",{ password: password });
+}
+
+/// Change current user password
+export function api_password_change(user, password, old_password) {
+    return axios.post("/api/user/"+user+"/password",{password: password, old_password: old_password });
 }
 
 /// get service permissions of user
