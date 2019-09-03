@@ -5,6 +5,10 @@
 Process daemon allowing to start/stop/input processes via your browser, in async Rust.
 
 - [ ] Web Interface
+ - [ ] Servrside-Push of changes
+ - [X] Inspect console
+ - [X] Start/Stop/Kill of services
+ - [X] User Management
 - [X] 2FA Authentification
 - [X] Autostart
 - [X] Stdout & Stderr
@@ -13,6 +17,8 @@ Process daemon allowing to start/stop/input processes via your browser, in async
 - [X] Auto-Restart
 - [X] View exit codes etc
 - [ ] Command-Preset
+- [X] Build-In DB (users,state,logs)
+- [ ] DBMS support (mariadb,mysql)
 
 ### Navigation
 
@@ -35,6 +41,11 @@ And to monitor new software, unstable services etc.
   This has some usability drawbacks but decreases the attack surface drastically.
 - You can disable stdin globally for a service.
 - It's written in rust, making it more resiliant to typical buffer overflows.
+
+### Caveats
+
+- SD has no mechanic internally for dropping privileges and thus running services as a different user, except for providing a bash script and running SD itself as root. This is *not* adivced to do!
+- Thus SD has to run as the same user its service should run, which imposes a certain security risk based on your application. In general you should not run untrusted software with SD. You can mitigate this by running docker containers via SD, leveraging some risks.
 
 ### Setup
 
