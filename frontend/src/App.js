@@ -50,6 +50,7 @@ function Navgiation (props) {
                 </NavDropdown>
               </Nav>
             </Navbar.Collapse>
+            <Nav.Link href="https://github.com/0xpr03/service-daemon"><Navbar.Text>© SD Authors</Navbar.Text></Nav.Link>
           </Navbar>)}
       </UserContext.Consumer>
     );
