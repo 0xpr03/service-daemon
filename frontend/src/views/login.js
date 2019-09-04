@@ -222,10 +222,11 @@ export default class Login extends React.Component {
                 <Col>
                 {
                     (this.state.mode === Mode.SETUP_TOTP) && (
+                        <><Row className="justify-content-center"><small>Please note that you can't use google authenticator due to bugs. You may use <a href="https://github.com/andOTP/andOTP#downloads">andOTP</a></small></Row>
                         <Row className="justify-content-center">
                             <QRCode value={this.state.qrcode} size={191}
                                 renderAs={"svg"} includeMargin={true} />
-                        </Row>
+                        </Row></>
                     )
                 }
                 <Row className="justify-content-center">
