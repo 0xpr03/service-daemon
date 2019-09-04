@@ -9,6 +9,7 @@ import { api_state, api_output, api_input, api_service_permissions, Permissions 
 import Form from "react-bootstrap/Form";
 import { fmtDuration } from '../lib/time';
 import { Link } from "react-router-dom";
+import { animateScroll } from "react-scroll";
 
 export default class IO extends React.Component {
     constructor(props) {
@@ -26,6 +27,7 @@ export default class IO extends React.Component {
 
         this.handleKeyDown = this.handleKeyDown.bind();
         this.handleChange = this.handleChange.bind();
+        this.scrollToBottom = this.scrollToBottom.bind();
     }
 
     handleKeyDown = (e) => {
@@ -42,6 +44,12 @@ export default class IO extends React.Component {
                 })
 
         }
+    }
+
+    scrollToBottom () {
+        animateScroll.scrollToBottom({
+            containerId: "output", smooth: false, duration: 0
+        });
     }
 
     clearError () {
@@ -81,7 +89,7 @@ export default class IO extends React.Component {
         if (Permissions.hasFlag(this.state.permissions, Permissions.OUTPUT)) {
             api_output(this.getSID())
                 .then(resp => {
-                    this.setState({ output: resp.data });
+                    this.setState({ output: resp.data }, this.scrollToBottom);
                     this.clearError();
                 })
                 .catch(err => {
@@ -118,7 +126,7 @@ export default class IO extends React.Component {
                     <Row><Error error={this.state.error} /></Row>
                     <Row><Col><h3>{this.state.name}</h3></Col><Col><Button as={Link} to={"/service/" + service}>Back to service</Button></Col></Row>
                     <Row><Col>Uptime: {this.uptime()}</Col></Row>
-                    <Row className="d-flex flex-grow-1 flex-fill overflow-auto console-wrapper">
+                    <Row id="output" className="d-flex flex-grow-1 flex-fill overflow-auto console-wrapper">
                         {show_output ? (
                             <Output data={this.state.output} />) : (
                                 <Col className="text-danger console-col">No permissions for output inspection.</Col>
