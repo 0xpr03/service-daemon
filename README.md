@@ -22,8 +22,9 @@ Process daemon allowing to start/stop/input processes via your browser, in async
 
 ### Navigation
 
-- [Why](#why)
+- [Why](#why-)
 - [Security concerncs](#but-how-secure-is-it-)
+- [Caveats](#caveats)
 - [Setup](#setup)
 - [Building](#building)
 - [Contributing](#contributing)
@@ -45,7 +46,7 @@ And to monitor new software, unstable services etc.
 ### Caveats
 
 - SD has no mechanic internally for dropping privileges and thus running services as a different user, except for providing a bash script and running SD itself as root. This is *not* adivced to do!
-- Thus SD has to run as the same user its service should run, which imposes a certain security risk based on your application. In general you should not run untrusted software with SD. You can mitigate this by running docker containers via SD, leveraging some risks.
+- Thus SD has to run as the same user its service should run, which imposes a certain security risk based on your application. In general you should not run untrusted software with SD. You can mitigate this by running docker containers via SD, lessening some risks.
 
 ### Setup
 
