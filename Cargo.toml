@@ -26,9 +26,9 @@ nanoid = "0.2"
 config = "0.9"
 data-encoding = "2"
 oath = "0.10"
-bcrypt = "0.5"
+bcrypt = "0.6"
 mysql = {version = "16", optional = true }
-sled = {version = "0.24", optional = true }
+sled = {version = "0.28", optional = true }
 bincode = {version = "1", optional = true }
 tokio-io = "0.1"
 tokio-codec = "0.1"
@@ -36,7 +36,7 @@ strip-ansi-escapes = "0.1"
 failure = "0.1"
 serde = {features = ["derive"], version = "1" }
 log = "0.4"
-env_logger = "0.6"
+env_logger = "0.7"
 metrohash = "1"
 tokio-process = "0.2"
 arraydeque = "0.4"
