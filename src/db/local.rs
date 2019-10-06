@@ -15,6 +15,8 @@ pub enum DBError {
     TooManyRetries(usize),
     #[fail(display = "Internal failure with DB err {}", _0)]
     SledError(#[cause] failure::Error),
+    #[fail(display = "Error with transaction: {}",_0)]
+    SledTransactionError(#[cause] sled::TransactionError),
     #[fail(display = "Interal failure with invalid Data {}", _0)]
     BincodeError(#[cause] Box<bincode::ErrorKind>),
 }
@@ -22,6 +24,19 @@ pub enum DBError {
 impl From<Box<bincode::ErrorKind>> for DBError {
     fn from(error: Box<bincode::ErrorKind>) -> Self {
         DBError::BincodeError(error)
+    }
+}
+
+impl From<sled::TransactionError> for DBError {
+    fn from(error: sled::TransactionError) -> Self {
+        DBError::SledTransactionError(error.into())
+    }
+}
+
+// fix for indirection creating misleading compiler errors
+impl From<sled::TransactionError> for super::Error {
+    fn from(error: sled::TransactionError) -> Self {
+        super::Error::InternalError(error.into())
     }
 }
 
@@ -147,23 +162,6 @@ impl DB {
     fn is_valid_uid(&self, id: &UID) -> Result<bool> {
         Ok(self.open_tree(tree::USER)?.contains_key(ser!(id))?)
     }
-    /// Inner function to simulate transaction
-    fn create_user_inner(&self, new_user: NewUserEnc, id: UID) -> Result<FullUser> {
-        let user = FullUser {
-            id,
-            email: new_user.email,
-            verified: false,
-            name: new_user.name,
-            password: new_user.password_enc,
-            totp: crypto::totp_gen_secret(),
-            totp_complete: false,
-            admin: false,
-        };
-        self.open_tree(tree::USER)?.insert(ser!(id), ser!(user))?;
-        self.open_tree(tree::REL_MAIL_UID)?
-            .insert(ser!(user.email), ser!(id))?;
-        Ok(user)
-    }
 }
 
 impl super::DBInterface for DB {
@@ -201,17 +199,27 @@ impl super::DBInterface for DB {
                 return Err(e);
             }
         };
-        // then create rest, otherwise cleanup
-        match self.create_user_inner(new_user, id) {
-            Ok(user) => Ok(user),
-            Err(e) => {
-                // make sure to clean the mail lock
-                self.open_tree(tree::REL_MAIL_UID)?.remove(mail_ser)?;
-                // erase user entry
-                self.open_tree(tree::USER)?.remove(ser!(id))?;
-                return Err(e);
-            }
-        }
+
+        let user = FullUser {
+            id,
+            email: new_user.email,
+            verified: false,
+            name: new_user.name,
+            password: new_user.password_enc,
+            totp: crypto::totp_gen_secret(),
+            totp_complete: false,
+            admin: false,
+        };
+        let user_tree = self.open_tree(tree::USER)?;
+        let rel_mail_uid_tree = self.open_tree(tree::REL_MAIL_UID)?;
+
+        // use transaction, avoid dangling user entries
+        (&user_tree, &rel_mail_uid_tree).transaction(|(user_tree, rel_mail_uid_tree)| {
+            user_tree.insert(ser!(id), ser!(user))?;
+            rel_mail_uid_tree.insert(ser!(user.email), ser!(id))?;
+            Ok(())
+        })?;
+        Ok(user)
     }
 
     fn get_users(&self) -> Result<Vec<UserMin>> {
