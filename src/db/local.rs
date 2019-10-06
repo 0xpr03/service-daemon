@@ -6,7 +6,6 @@ use std::collections::HashMap;
 
 use failure;
 use sled::*;
-use std::sync::Arc;
 
 #[derive(Fail, Debug)]
 pub enum DBError {
@@ -85,7 +84,7 @@ impl Default for DB {
     fn default() -> Self {
         Self {
             // TODO: this does NOT return but panic when the DB is already in use
-            db: match Db::start_default("db.sled") {
+            db: match Db::open("db.sled") {
                 Err(e) => {
                     error!("Unable to start local DB: {}", e);
                     panic!("Unable to start local DB: {}", e);
@@ -95,8 +94,6 @@ impl Default for DB {
         }
     }
 }
-
-type WTree = Arc<Tree>;
 
 impl DB {
     /// Generate serialized Service-Perm ID
@@ -109,7 +106,7 @@ impl DB {
         Ok(deserialize(data)?)
     }
     /// Open tree with wrapped error
-    fn open_tree(&self, tree: &'static str) -> Result<WTree> {
+    fn open_tree(&self, tree: &'static str) -> Result<Tree> {
         Ok(self
             .db
             .open_tree(tree)
@@ -162,9 +159,9 @@ impl DB {
             totp_complete: false,
             admin: false,
         };
-        self.open_tree(tree::USER)?.set(ser!(id), ser!(user))?;
+        self.open_tree(tree::USER)?.insert(ser!(id), ser!(user))?;
         self.open_tree(tree::REL_MAIL_UID)?
-            .set(ser!(user.email), ser!(id))?;
+            .insert(ser!(user.email), ser!(id))?;
         Ok(user)
     }
 }
@@ -200,7 +197,7 @@ impl super::DBInterface for DB {
             Ok(id) => id,
             Err(e) => {
                 // make sure to clean the mail lock
-                self.open_tree(tree::REL_MAIL_UID)?.del(mail_ser)?;
+                self.open_tree(tree::REL_MAIL_UID)?.remove(mail_ser)?;
                 return Err(e);
             }
         };
@@ -209,9 +206,9 @@ impl super::DBInterface for DB {
             Ok(user) => Ok(user),
             Err(e) => {
                 // make sure to clean the mail lock
-                self.open_tree(tree::REL_MAIL_UID)?.del(mail_ser)?;
+                self.open_tree(tree::REL_MAIL_UID)?.remove(mail_ser)?;
                 // erase user entry
-                self.open_tree(tree::USER)?.del(ser!(id))?;
+                self.open_tree(tree::USER)?.remove(ser!(id))?;
                 return Err(e);
             }
         }
@@ -266,9 +263,9 @@ impl super::DBInterface for DB {
         let tree = self.open_tree(tree::PERMISSION_SERVICE)?;
         let key = DB::service_perm_key(id, service);
         if new_perms.is_empty() {
-            tree.del(&key)?;
+            tree.remove(&key)?;
         } else {
-            tree.set(&key, ser!(new_perms))?;
+            tree.insert(&key, ser!(new_perms))?;
         }
         Ok(())
     }
@@ -302,11 +299,11 @@ impl super::DBInterface for DB {
         let tree = self.open_tree(tree::LOGINS)?;
         match state {
             None => {
-                tree.del(ser!(session))?;
-                self.open_tree(tree::REL_LOGIN_SEEN)?.del(ser!(session))?;
+                tree.remove(ser!(session))?;
+                self.open_tree(tree::REL_LOGIN_SEEN)?.remove(ser!(session))?;
             }
             Some(state) => {
-                tree.set(ser!(session), ser!(state))?;
+                tree.insert(ser!(session), ser!(state))?;
                 self.update_login(session)?;
             }
         }
@@ -315,7 +312,7 @@ impl super::DBInterface for DB {
 
     fn update_login(&self, session: &str) -> Result<()> {
         self.open_tree(tree::REL_LOGIN_SEEN)?
-            .set(ser!(session), ser!(super::get_current_time()))?;
+            .insert(ser!(session), ser!(super::get_current_time()))?;
         Ok(())
     }
 
@@ -327,8 +324,8 @@ impl super::DBInterface for DB {
             let (session, time) = val?;
             let time: u64 = deserialize(&time)?;
             if super::get_current_time() - time > max_age as u64 {
-                tree_rel.del(&session)?;
-                tree_logins.del(session)?;
+                tree_rel.remove(&session)?;
+                tree_logins.remove(session)?;
                 deleted += 1;
             }
         }
@@ -349,28 +346,28 @@ impl super::DBInterface for DB {
                 }
                 Ok(_) => {
                     debug!("{} not in use", user.email);
-                    tree.del(ser!(old_email))?;
+                    tree.remove(ser!(old_email))?;
                 }
             }
         }
-        self.open_tree(tree::USER)?.set(ser!(user.id), ser!(user))?;
+        self.open_tree(tree::USER)?.insert(ser!(user.id), ser!(user))?;
 
         Ok(())
     }
 
     fn delete_user(&self, id: UID) -> Result<()> {
-        let user: FullUser = match self.open_tree(tree::USER)?.del(ser!(id))? {
+        let user: FullUser = match self.open_tree(tree::USER)?.remove(ser!(id))? {
             Some(u) => deserialize(&u)?,
             None => return Err(super::Error::InvalidUser(id).into()),
         };
-        self.open_tree(tree::REL_MAIL_UID)?.del(ser!(user.email))?;
-        self.open_tree(tree::PERMISSION_SERVICE)?.del(ser!(id))?;
+        self.open_tree(tree::REL_MAIL_UID)?.remove(ser!(user.email))?;
+        self.open_tree(tree::PERMISSION_SERVICE)?.remove(ser!(id))?;
         let sessions = self.open_tree(tree::LOGINS)?;
         for val in sessions.iter() {
             let (key, val) = val?;
             let al: ActiveLogin = deserialize(&val)?;
             if al.id == id {
-                sessions.del(key)?;
+                sessions.remove(key)?;
             }
         }
         Ok(())
@@ -412,7 +409,7 @@ mod test {
         const B_END: i32 = 20;
         for a in 0..A_END {
             for b in 0..B_END {
-                db.set(ser!((a, b)), ser!(format!("{}-{}", a, b))).unwrap();
+                db.insert(ser!((a, b)), ser!(format!("{}-{}", a, b))).unwrap();
             }
         }
 
