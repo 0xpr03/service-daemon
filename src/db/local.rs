@@ -15,7 +15,7 @@ pub enum DBError {
     TooManyRetries(usize),
     #[fail(display = "Internal failure with DB err {}", _0)]
     SledError(#[cause] failure::Error),
-    #[fail(display = "Error with transaction: {}",_0)]
+    #[fail(display = "Error with transaction: {}", _0)]
     SledTransactionError(#[cause] sled::TransactionError),
     #[fail(display = "Interal failure with invalid Data {}", _0)]
     BincodeError(#[cause] Box<bincode::ErrorKind>),
@@ -111,14 +111,24 @@ impl Default for DB {
 }
 
 impl DB {
+    /// Serialize a multi-key for use in indexing, enforcing big endianess for sled
+    #[inline]
+    fn ser_key<T: ?Sized + serde::Serialize>(t: &T) -> Vec<u8> {
+        bincode::config().big_endian().serialize(t).unwrap()
+    }
+    /// Deserialize a multi-key used in indexing, enforcing big endianess for sled
+    #[inline]
+    fn deser_key<'a, T: serde::Deserialize<'a>>(bytes: &'a [u8]) -> T {
+        bincode::config().big_endian().deserialize::<T>(bytes).unwrap()
+    }
     /// Generate serialized Service-Perm ID
     #[inline]
     fn service_perm_key(uid: UID, sid: SID) -> Vec<u8> {
-        serialize(&(uid, sid)).unwrap()
+        Self::ser_key(&(uid, sid))
     }
     #[inline]
     fn service_perm_key_reverse(data: &[u8]) -> Result<(UID, SID)> {
-        Ok(deserialize(data)?)
+        Ok(bincode::config().big_endian().deserialize(data)?)
     }
     /// Open tree with wrapped error
     fn open_tree(&self, tree: &'static str) -> Result<Tree> {
@@ -255,9 +265,7 @@ impl super::DBInterface for DB {
 
     fn get_all_perm_service(&self, id: UID) -> Result<HashMap<SID, ServicePerm>> {
         let v = self.open_tree(tree::PERMISSION_SERVICE)?;
-        let start = (id, 0);
-        let end = (id + 1, 0);
-        let iter = v.range(ser!(start)..ser!(end));
+        let iter = v.range(Self::service_perm_key(id, 0)..Self::service_perm_key(id+1,0));
         Ok(iter
             .map(|v| {
                 let (key, value) = v?;
@@ -308,7 +316,8 @@ impl super::DBInterface for DB {
         match state {
             None => {
                 tree.remove(ser!(session))?;
-                self.open_tree(tree::REL_LOGIN_SEEN)?.remove(ser!(session))?;
+                self.open_tree(tree::REL_LOGIN_SEEN)?
+                    .remove(ser!(session))?;
             }
             Some(state) => {
                 tree.insert(ser!(session), ser!(state))?;
@@ -358,7 +367,8 @@ impl super::DBInterface for DB {
                 }
             }
         }
-        self.open_tree(tree::USER)?.insert(ser!(user.id), ser!(user))?;
+        self.open_tree(tree::USER)?
+            .insert(ser!(user.id), ser!(user))?;
 
         Ok(())
     }
@@ -368,7 +378,8 @@ impl super::DBInterface for DB {
             Some(u) => deserialize(&u)?,
             None => return Err(super::Error::InvalidUser(id).into()),
         };
-        self.open_tree(tree::REL_MAIL_UID)?.remove(ser!(user.email))?;
+        self.open_tree(tree::REL_MAIL_UID)?
+            .remove(ser!(user.email))?;
         self.open_tree(tree::PERMISSION_SERVICE)?.remove(ser!(id))?;
         let sessions = self.open_tree(tree::LOGINS)?;
         for val in sessions.iter() {
@@ -406,31 +417,81 @@ impl super::DBInterface for DB {
 #[cfg(test)]
 mod test {
     use super::*;
-
+    use crate::db::models::*;
+    use crate::db::DBInterface;
     type Pair = (i32, i32);
+    use tempfile::tempdir;
+    use std::collections::HashMap;
+
+    /// Assert we're doing the endian-ness right
     #[test]
+    fn test_service_perm() {
+        let tmp_dir = tempdir().unwrap();
+        let db = DB{
+            db: match Db::open(format!("{}/db", tmp_dir.path().to_string_lossy())) {
+                Err(e) => {
+                    error!("Unable to start local DB: {}", e);
+                    panic!("Unable to start local DB: {}", e);
+                }
+                Ok(v) => v,
+            }
+        };
+
+        db.set_perm_service(1, 256, ServicePerm::from_bits_truncate(1)).unwrap();
+        db.set_perm_service(1, 258, ServicePerm::from_bits_truncate(9)).unwrap();
+        db.set_perm_service(2, 257, ServicePerm::from_bits_truncate(2)).unwrap();
+        db.set_perm_service(256, 1, ServicePerm::from_bits_truncate(4)).unwrap();
+        db.set_perm_service(257, 2, ServicePerm::from_bits_truncate(8)).unwrap();
+
+        let mut map = HashMap::new();
+        map.insert(258, ServicePerm::from_bits_truncate(9));
+        map.insert(256, ServicePerm::from_bits_truncate(1));
+        assert_eq!(db.get_all_perm_service(1).unwrap(),map);
+    }
+
+    /// Assert that our serialization works as intended
+    /// 
+    /// This also revealed that we need to enforce big endian for this to work
+    #[test]
+    #[ignore]
     fn test_range_service_perm() {
         let config = ConfigBuilder::default().temporary(true);
 
-        let db = Db::start(config.build()).unwrap();
-        const A_END: i32 = 100;
-        const B_END: i32 = 20;
-        for a in 0..A_END {
-            for b in 0..B_END {
-                db.insert(ser!((a, b)), ser!(format!("{}-{}", a, b))).unwrap();
-            }
-        }
+        let mut cfg = bincode::config();
+        cfg.big_endian();
 
-        let a: i32 = 22;
-        let b_start = 5;
-        let start: Pair = (a, b_start);
-        let end: Pair = (a + 1, 0);
-        let mut iter = db.range(ser!(start)..ser!(end));
-        for r in b_start..B_END {
-            let (key, val) = iter.next().unwrap().unwrap();
-            assert_eq!((a, r), deserialize::<Pair>(&key).unwrap());
-            assert_eq!(format!("{}-{}", a, r), deserialize::<String>(&val).unwrap());
+        let db = Db::start(config.build()).unwrap();
+        // take values that require > 1 byte
+        db.insert(cfg.serialize(&(1, 2)).unwrap(), cfg.serialize(&format!("{}-{}", 1, 2)).unwrap()).unwrap();
+        db.insert(cfg.serialize(&(2, 1)).unwrap(), cfg.serialize(&format!("{}-{}", 2, 1)).unwrap()).unwrap();
+        db.insert(cfg.serialize(&(512, 420)).unwrap(), cfg.serialize(&format!("{}-{}", 512, 420)).unwrap()).unwrap();
+        db.insert(cfg.serialize(&(420, 512)).unwrap(), cfg.serialize(&format!("{}-{}", 420, 512)).unwrap()).unwrap();
+
+        let iter = db.range(cfg.serialize(&(1,1)).unwrap()..cfg.serialize(&(513,513)).unwrap());
+        let mut i = 0;
+        for elem in iter {
+            let (key, val) = elem.unwrap();
+            let (a, b) = cfg.deserialize::<Pair>(&key).unwrap();
+            println!("{} {}",a,b);
+            assert_eq!(format!("{}-{}", a, b), cfg.deserialize::<String>(&val).unwrap());
+            i += 1;
         }
-        assert!(iter.next().is_none());
+        assert_eq!(4,i);
+
+        // now test a sub-range
+        db.insert(cfg.serialize(&(420, 510)).unwrap(), cfg.serialize(&format!("{}-{}", 420, 510)).unwrap()).unwrap();
+        db.insert(cfg.serialize(&(420, 509)).unwrap(), cfg.serialize(&format!("{}-{}", 420, 509)).unwrap()).unwrap();
+        db.insert(cfg.serialize(&(420, 508)).unwrap(), cfg.serialize(&format!("{}-{}", 420, 508)).unwrap()).unwrap();
+
+        let iter = db.range(cfg.serialize(&(420,508)).unwrap()..cfg.serialize(&(420,510)).unwrap());
+        let mut i = 0;
+        for elem in iter {
+            let (key, val) = elem.unwrap();
+            let (a, b) = cfg.deserialize::<Pair>(&key).unwrap();
+            println!("{} {}",a,b);
+            assert_eq!(format!("{}-{}", a, b), cfg.deserialize::<String>(&val).unwrap());
+            i += 1;
+        }
+        assert_eq!(2,i);
     }
 }
