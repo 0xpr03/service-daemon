@@ -83,6 +83,8 @@ mod tree {
     pub const LOGINS: &'static str = "LOGINS";
     /// session String<->u64 time
     pub const REL_LOGIN_SEEN: &'static str = "REL_LOGIN_SEEN";
+    /// service log entries (SID,Db::generate_id)->LogEntry
+    pub const LOG_ENTRIES: &'static str = "LOG_ENTRIES";
 }
 
 mod meta {
@@ -112,6 +114,8 @@ impl Default for DB {
 
 impl DB {
     /// Serialize a multi-key for use in indexing, enforcing big endianess for sled
+    ///
+    /// Comes with some performance penalty, should therefore not be used everywhere
     #[inline]
     fn ser_key<T: ?Sized + serde::Serialize>(t: &T) -> Vec<u8> {
         bincode::config().big_endian().serialize(t).unwrap()
@@ -119,7 +123,10 @@ impl DB {
     /// Deserialize a multi-key used in indexing, enforcing big endianess for sled
     #[inline]
     fn deser_key<'a, T: serde::Deserialize<'a>>(bytes: &'a [u8]) -> T {
-        bincode::config().big_endian().deserialize::<T>(bytes).unwrap()
+        bincode::config()
+            .big_endian()
+            .deserialize::<T>(bytes)
+            .unwrap()
     }
     /// Generate serialized Service-Perm ID
     #[inline]
@@ -265,7 +272,7 @@ impl super::DBInterface for DB {
 
     fn get_all_perm_service(&self, id: UID) -> Result<HashMap<SID, ServicePerm>> {
         let v = self.open_tree(tree::PERMISSION_SERVICE)?;
-        let iter = v.range(Self::service_perm_key(id, 0)..Self::service_perm_key(id+1,0));
+        let iter = v.range(Self::service_perm_key(id, 0)..Self::service_perm_key(id + 1, 0));
         Ok(iter
             .map(|v| {
                 let (key, value) = v?;
@@ -412,45 +419,129 @@ impl super::DBInterface for DB {
         }
         Ok(None)
     }
+
+    fn insert_log_entry(&self, service: SID, entry: NewLogEntry) -> Result<()> {
+        let key = self.db.generate_id()?;
+        let entry = LogEntry::new(key, entry);
+        self.open_tree(tree::LOG_ENTRIES)?.insert(
+            Self::ser_key(&(service, key)),
+            ser!(entry),
+        )?;
+        Ok(())
+    }
+
+    fn service_log_limited(&self, service: SID, limit: usize) -> Result<Vec<LogEntryResolved>> {
+        let mut iter = self
+            .open_tree(tree::LOG_ENTRIES)?
+            .scan_prefix(Self::ser_key(&service));
+
+        let mut invoker_map: HashMap<UID,Invoker> = HashMap::new();
+        let mut entries = Vec::with_capacity(limit);
+        while let Some(e) = iter.next_back() {
+            let (k, v) = e?;
+            let entry: LogEntry = deserialize(&v)?;
+            
+            // basically try_map to convert uid to Invoker if existing
+            let invoker = match entry.invoker {
+                None => None,
+                Some(uid) => Some(match invoker_map.get(&uid) {
+                    Some(e) => e.clone(),
+                    None => {
+                        let invoker = Invoker::from(self.get_user(uid)?);
+                        invoker_map.insert(uid, invoker.clone());
+                        invoker
+                    }
+                }),
+            };
+
+            let entry = LogEntryResolved {
+                time: entry.time,
+                action: entry.action,
+                unique: entry.unique,
+                invoker,
+            };
+            entries.push(entry);
+            if entries.len() >= limit {
+                break;
+            }
+        }
+        Ok(entries)
+    }
+
+    fn service_log_date(&self, service: SID, from: Date, to: Date) -> Result<Vec<LogEntry>> {
+        // sadly a full table scan for a service, as the date isn't really the same always
+        let mut entries = Vec::new();
+        let tree = self.open_tree(tree::LOG_ENTRIES)?;
+        for entry in tree.scan_prefix(Self::ser_key(&(service))) {
+            let (_, v) = entry?;
+            let entry: LogEntry = deserialize(&v)?;
+            if from <= entry.time && to >= entry.time {
+                entries.push(entry);
+            }
+        }
+        Ok(entries)
+    }
+
+    fn service_log_minmax(&self, service: SID) -> Result<Option<(Date, Date)>> {
+        let tree = self.open_tree(tree::LOG_ENTRIES)?;
+        let mut iter = tree.scan_prefix(Self::ser_key(&service));
+        if let Some(min) = iter.next() {
+            let (k, _) = min?;
+            let (_, min) = Self::deser_key::<(SID, Date)>(&k);
+            return match iter.next_back() {
+                Some(max) => {
+                    let (k, _) = max?;
+                    let (_, max) = Self::deser_key::<(SID, Date)>(&k);
+                    Ok(Some((min, max)))
+                }
+                None => Ok(Some((min, min))),
+            };
+        }
+        Ok(None)
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::db::models::*;
     use crate::db::DBInterface;
     type Pair = (i32, i32);
-    use tempfile::tempdir;
     use std::collections::HashMap;
+    use tempfile::tempdir;
 
     /// Assert we're doing the endian-ness right
     #[test]
     fn test_service_perm() {
         let tmp_dir = tempdir().unwrap();
-        let db = DB{
+        let db = DB {
             db: match Db::open(format!("{}/db", tmp_dir.path().to_string_lossy())) {
                 Err(e) => {
                     error!("Unable to start local DB: {}", e);
                     panic!("Unable to start local DB: {}", e);
                 }
                 Ok(v) => v,
-            }
+            },
         };
 
-        db.set_perm_service(1, 256, ServicePerm::from_bits_truncate(1)).unwrap();
-        db.set_perm_service(1, 258, ServicePerm::from_bits_truncate(9)).unwrap();
-        db.set_perm_service(2, 257, ServicePerm::from_bits_truncate(2)).unwrap();
-        db.set_perm_service(256, 1, ServicePerm::from_bits_truncate(4)).unwrap();
-        db.set_perm_service(257, 2, ServicePerm::from_bits_truncate(8)).unwrap();
+        db.set_perm_service(1, 256, ServicePerm::from_bits_truncate(1))
+            .unwrap();
+        db.set_perm_service(1, 258, ServicePerm::from_bits_truncate(9))
+            .unwrap();
+        db.set_perm_service(2, 257, ServicePerm::from_bits_truncate(2))
+            .unwrap();
+        db.set_perm_service(256, 1, ServicePerm::from_bits_truncate(4))
+            .unwrap();
+        db.set_perm_service(257, 2, ServicePerm::from_bits_truncate(8))
+            .unwrap();
 
         let mut map = HashMap::new();
         map.insert(258, ServicePerm::from_bits_truncate(9));
         map.insert(256, ServicePerm::from_bits_truncate(1));
-        assert_eq!(db.get_all_perm_service(1).unwrap(),map);
+        assert_eq!(db.get_all_perm_service(1).unwrap(), map);
     }
 
     /// Assert that our serialization works as intended
-    /// 
+    ///
     /// This also revealed that we need to enforce big endian for this to work
     #[test]
     #[ignore]
@@ -462,36 +553,71 @@ mod test {
 
         let db = Db::start(config.build()).unwrap();
         // take values that require > 1 byte
-        db.insert(cfg.serialize(&(1, 2)).unwrap(), cfg.serialize(&format!("{}-{}", 1, 2)).unwrap()).unwrap();
-        db.insert(cfg.serialize(&(2, 1)).unwrap(), cfg.serialize(&format!("{}-{}", 2, 1)).unwrap()).unwrap();
-        db.insert(cfg.serialize(&(512, 420)).unwrap(), cfg.serialize(&format!("{}-{}", 512, 420)).unwrap()).unwrap();
-        db.insert(cfg.serialize(&(420, 512)).unwrap(), cfg.serialize(&format!("{}-{}", 420, 512)).unwrap()).unwrap();
+        db.insert(
+            cfg.serialize(&(1, 2)).unwrap(),
+            cfg.serialize(&format!("{}-{}", 1, 2)).unwrap(),
+        )
+        .unwrap();
+        db.insert(
+            cfg.serialize(&(2, 1)).unwrap(),
+            cfg.serialize(&format!("{}-{}", 2, 1)).unwrap(),
+        )
+        .unwrap();
+        db.insert(
+            cfg.serialize(&(512, 420)).unwrap(),
+            cfg.serialize(&format!("{}-{}", 512, 420)).unwrap(),
+        )
+        .unwrap();
+        db.insert(
+            cfg.serialize(&(420, 512)).unwrap(),
+            cfg.serialize(&format!("{}-{}", 420, 512)).unwrap(),
+        )
+        .unwrap();
 
-        let iter = db.range(cfg.serialize(&(1,1)).unwrap()..cfg.serialize(&(513,513)).unwrap());
+        let iter = db.range(cfg.serialize(&(1, 1)).unwrap()..cfg.serialize(&(513, 513)).unwrap());
         let mut i = 0;
         for elem in iter {
             let (key, val) = elem.unwrap();
             let (a, b) = cfg.deserialize::<Pair>(&key).unwrap();
-            println!("{} {}",a,b);
-            assert_eq!(format!("{}-{}", a, b), cfg.deserialize::<String>(&val).unwrap());
+            println!("{} {}", a, b);
+            assert_eq!(
+                format!("{}-{}", a, b),
+                cfg.deserialize::<String>(&val).unwrap()
+            );
             i += 1;
         }
-        assert_eq!(4,i);
+        assert_eq!(4, i);
 
         // now test a sub-range
-        db.insert(cfg.serialize(&(420, 510)).unwrap(), cfg.serialize(&format!("{}-{}", 420, 510)).unwrap()).unwrap();
-        db.insert(cfg.serialize(&(420, 509)).unwrap(), cfg.serialize(&format!("{}-{}", 420, 509)).unwrap()).unwrap();
-        db.insert(cfg.serialize(&(420, 508)).unwrap(), cfg.serialize(&format!("{}-{}", 420, 508)).unwrap()).unwrap();
+        db.insert(
+            cfg.serialize(&(420, 510)).unwrap(),
+            cfg.serialize(&format!("{}-{}", 420, 510)).unwrap(),
+        )
+        .unwrap();
+        db.insert(
+            cfg.serialize(&(420, 509)).unwrap(),
+            cfg.serialize(&format!("{}-{}", 420, 509)).unwrap(),
+        )
+        .unwrap();
+        db.insert(
+            cfg.serialize(&(420, 508)).unwrap(),
+            cfg.serialize(&format!("{}-{}", 420, 508)).unwrap(),
+        )
+        .unwrap();
 
-        let iter = db.range(cfg.serialize(&(420,508)).unwrap()..cfg.serialize(&(420,510)).unwrap());
+        let iter =
+            db.range(cfg.serialize(&(420, 508)).unwrap()..cfg.serialize(&(420, 510)).unwrap());
         let mut i = 0;
         for elem in iter {
             let (key, val) = elem.unwrap();
             let (a, b) = cfg.deserialize::<Pair>(&key).unwrap();
-            println!("{} {}",a,b);
-            assert_eq!(format!("{}-{}", a, b), cfg.deserialize::<String>(&val).unwrap());
+            println!("{} {}", a, b);
+            assert_eq!(
+                format!("{}-{}", a, b),
+                cfg.deserialize::<String>(&val).unwrap()
+            );
             i += 1;
         }
-        assert_eq!(2,i);
+        assert_eq!(2, i);
     }
 }

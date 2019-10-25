@@ -9,6 +9,12 @@ pub struct ServiceRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct LogLatestRequest {
+    pub service: SID,
+    pub amount: usize,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct UserRequest {
     pub user: UID,
 }

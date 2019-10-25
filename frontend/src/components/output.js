@@ -1,6 +1,6 @@
 import React from "react";
 import Col from "react-bootstrap/Col";
-import { LogType } from "../lib/Api";
+import { ConsoleType } from "../lib/Api";
 import './output.css';
 
 function lines (lines) {
@@ -8,21 +8,21 @@ function lines (lines) {
 }
 
 function parseLine (line) {
-    if (line[LogType.State] !== undefined) {
+    if (line[ConsoleType.State] !== undefined) {
         return (<Col className="text-info console-col">
-            {line[LogType.State]}
+            {line[ConsoleType.State]}
         </Col>);
-    } else if (line[LogType.Stderr] !== undefined) {
+    } else if (line[ConsoleType.Stderr] !== undefined) {
         return (<Col className="text-danger console-col">
-            {line[LogType.Stderr]}
+            {line[ConsoleType.Stderr]}
         </Col>);
-    } else if (line[LogType.Stdin] !== undefined) {
+    } else if (line[ConsoleType.Stdin] !== undefined) {
         return (<Col className="text-primary console-col">
-            {line[LogType.Stdin]}
+            {line[ConsoleType.Stdin]}
         </Col>);
     } else {
         return (<Col className="text-normal console-col">
-            {line[LogType.Stdout]}
+            {line[ConsoleType.Stdout]}
         </Col>);
     }
 }

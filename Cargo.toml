@@ -44,6 +44,7 @@ futures = "0.1"
 lazy_static = "1"
 rand = "0.7"
 bitflags = "1"
+chrono = "0.4.9"
 
 [target.'cfg(unix)'.dependencies]
 sysexit = "0.2"

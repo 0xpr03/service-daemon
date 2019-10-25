@@ -87,6 +87,7 @@ impl From<bcrypt::BcryptError> for UserError {
         UserError::HashError(error)
     }
 }
+
 impl From<db::Error> for UserError {
     fn from(error: db::Error) -> Self {
         match error {

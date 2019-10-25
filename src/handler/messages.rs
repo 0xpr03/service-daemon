@@ -1,6 +1,6 @@
 use super::error::*;
-use crate::db::models::ServicePerm;
-use crate::handler::service::{LogType, State};
+use crate::db::models::{LogEntryResolved, ServicePerm};
+use crate::handler::service::{ConsoleType, State};
 use crate::settings::Service;
 use crate::web::models::*;
 use actix::prelude::*;
@@ -110,10 +110,10 @@ pub struct GetAdminPerm {
     pub session: Session,
 }
 
-/// Get permissions of session for service
+/// Get permissions & UID of session for service
 /// Returns error if no valid session is found
 #[derive(Message)]
-#[rtype(result = "Result<ServicePerm, UserError>")]
+#[rtype(result = "Result<(UID,ServicePerm), UserError>")]
 pub struct GetServicePerm {
     pub session: Session,
     pub service: SID,
@@ -174,6 +174,8 @@ pub mod unchecked {
     pub struct SendStdin {
         pub id: SID,
         pub input: String,
+        /// Invoker to use for logging
+        pub user: Option<UID>,
     }
 
     /// **Unchecked!** internal, set password cost for future passwords  
@@ -188,6 +190,8 @@ pub mod unchecked {
     #[rtype(result = "Result<(), ControllerError>")]
     pub struct StartService {
         pub id: SID,
+        /// Invoker to use for logging
+        pub user: Option<UID>,
     }
 
     /// **Unchecked!** stop service
@@ -195,6 +199,8 @@ pub mod unchecked {
     #[rtype(result = "Result<(), ControllerError>")]
     pub struct StopService {
         pub id: SID,
+        /// Invoker to use for logging
+        pub user: Option<UID>,
     }
 
     /// **Unchecked!** kill service
@@ -202,6 +208,8 @@ pub mod unchecked {
     #[rtype(result = "Result<(), ControllerError>")]
     pub struct KillService {
         pub id: SID,
+        /// Invoker to use for logging
+        pub user: Option<UID>,
     }
 
     /// **Unchecked!** get service status
@@ -211,9 +219,17 @@ pub mod unchecked {
         pub id: SID,
     }
 
+    /// **Unchecked!** get service latest log
+    #[derive(Message)]
+    #[rtype(result = "Result<Vec<LogEntryResolved>, ControllerError>")]
+    pub struct GetLogLatest {
+        pub id: SID,
+        pub amount: usize,
+    }
+
     /// **Unchecked!** get service output
     #[derive(Message)]
-    #[rtype(result = "Result<Vec<LogType<String>>, ControllerError>")]
+    #[rtype(result = "Result<Vec<ConsoleType<String>>, ControllerError>")]
     pub struct GetOutput {
         pub id: SID,
     }
