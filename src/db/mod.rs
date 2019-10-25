@@ -70,6 +70,16 @@ pub trait DBInterface: Sized {
     fn delete_old_logins(&self, max_age: u32) -> Result<usize>;
     /// Get (reserved) root UID
     fn get_root_id(&self) -> UID;
+    /// Insert new service log entry
+    fn insert_log_entry(&self, service: SID, entry: NewLogEntry) -> Result<()>;
+    /// Get last n log entries for service
+    fn service_log_limited(&self, service: SID, limit: usize) -> Result<Vec<LogEntryResolved>>;
+    /// Get service log entries between two dates
+    fn service_log_date(&self, service: SID, from: Date, to: Date) -> Result<Vec<LogEntry>>;
+    /// Returns min and max dates where log entries exist for s given service
+    ///
+    /// Returns none if no entries exist
+    fn service_log_minmax(&self, service: SID) -> Result<Option<(Date, Date)>>;
 }
 
 lazy_static! {

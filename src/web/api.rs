@@ -59,9 +59,9 @@ macro_rules! check_perm {
                     })
                     .map_err(Error::from)
                     .and_then(move |res| match res {
-                        Ok(perms) => {
+                        Ok((uid, perms)) => {
                             if perms.contains($perm) {
-                                Either::A($cmd())
+                                Either::A($cmd(uid))
                             } else {
                                 Either::B(Either::A(ok(
                                     HttpResponse::Unauthorized().json("no perms")
@@ -290,7 +290,7 @@ pub fn session_service_perm(
                 })
                 .map_err(Error::from)
                 .map(|response| match response {
-                    Ok(v) => HttpResponse::Ok().json(ServicePermWrap { perms: v.bits() }),
+                    Ok((_, v)) => HttpResponse::Ok().json(ServicePermWrap { perms: v.bits() }),
                     Err(e) => e.error_response(),
                 }),
         )
@@ -316,6 +316,28 @@ pub fn session_permissions(id: Identity) -> impl Future<Item = HttpResponse, Err
     }
 }
 
+pub fn log_latest(
+    item: web::Path<LogLatestRequest>,
+    id: Identity,
+) -> impl Future<Item = HttpResponse, Error = Error> {
+    dbg!(&item);
+    let item = item.into_inner();
+    check_perm!(id.identity(), item.service, ServicePerm::LOG, move |_| {
+        ServiceController::from_registry()
+            .send(unchecked::GetLogLatest {
+                id: item.service,
+                amount: item.amount,
+            })
+            .map_err(Error::from)
+            .map(|response| match response {
+                Ok(v) => HttpResponse::Ok().json(v),
+                Err(e) => e.error_response(),
+            })
+    })
+}
+
+// TODO: rewrite to also use service macro
+// currently using manual perm fetching for perms.is_empty()
 pub fn state(
     item: web::Path<ServiceRequest>,
     id: Identity,
@@ -330,7 +352,7 @@ pub fn state(
                 })
                 .map_err(Error::from)
                 .and_then(move |res| match res {
-                    Ok(perms) => {
+                    Ok((_, perms)) => {
                         if perms.is_empty() {
                             Either::B(Either::A(ok(HttpResponse::Unauthorized().json("no perms"))))
                         } else {
@@ -359,11 +381,12 @@ pub fn input(
     id: Identity,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     let service = item.into_inner().service;
-    check_perm!(id.identity(), service, ServicePerm::STDIN_ALL, move || {
+    check_perm!(id.identity(), service, ServicePerm::STDIN_ALL, move |uid| {
         ServiceController::from_registry()
             .send(unchecked::SendStdin {
                 id: service,
                 input: data.into_inner(),
+                user: Some(uid),
             })
             .map_err(Error::from)
             .map(|response| match response {
@@ -378,9 +401,12 @@ pub fn start(
     id: Identity,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     let service = item.into_inner().service;
-    check_perm!(id.identity(), service, ServicePerm::START, move || {
+    check_perm!(id.identity(), service, ServicePerm::START, move |uid| {
         ServiceController::from_registry()
-            .send(unchecked::StartService { id: service })
+            .send(unchecked::StartService {
+                id: service,
+                user: Some(uid),
+            })
             .map_err(Error::from)
             .map(|response| match response {
                 Ok(()) => HttpResponse::NoContent().finish(),
@@ -394,9 +420,12 @@ pub fn kill(
     id: Identity,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     let service = item.into_inner().service;
-    check_perm!(id.identity(), service, ServicePerm::KILL, move || {
+    check_perm!(id.identity(), service, ServicePerm::KILL, move |uid| {
         ServiceController::from_registry()
-            .send(unchecked::KillService { id: service })
+            .send(unchecked::KillService {
+                id: service,
+                user: Some(uid),
+            })
             .map_err(Error::from)
             .map(|response| match response {
                 Ok(()) => HttpResponse::NoContent().finish(),
@@ -410,9 +439,12 @@ pub fn stop(
     id: Identity,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     let service = item.into_inner().service;
-    check_perm!(id.identity(), service, ServicePerm::STOP, move || {
+    check_perm!(id.identity(), service, ServicePerm::STOP, move |uid| {
         ServiceController::from_registry()
-            .send(unchecked::StopService { id: service })
+            .send(unchecked::StopService {
+                id: service,
+                user: Some(uid),
+            })
             .map_err(Error::from)
             .map(|response| match response {
                 Ok(()) => HttpResponse::NoContent().finish(),
@@ -540,7 +572,7 @@ pub fn output(
     id: Identity,
 ) -> impl Future<Item = HttpResponse, Error = Error> {
     let service = item.into_inner().service;
-    check_perm!(id.identity(), service, ServicePerm::OUTPUT, move || {
+    check_perm!(id.identity(), service, ServicePerm::OUTPUT, move |_| {
         ServiceController::from_registry()
             .send(unchecked::GetOutput { id: service })
             .map_err(Error::from)

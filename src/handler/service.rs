@@ -1,4 +1,5 @@
 use super::error::ControllerError;
+use crate::db::models::{LogAction, LogEntryResolved, NewLogEntry};
 use crate::db::{DBInterface, DB};
 use crate::handler::user::UserService;
 use crate::messages::unchecked::*;
@@ -23,7 +24,7 @@ use std::collections::{HashMap, HashSet};
 use std::io;
 use std::process::{Command, Stdio};
 use std::sync::atomic::Ordering;
-use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize};
 use std::sync::{Arc, RwLock};
 
 pub struct ServiceController {
@@ -56,9 +57,16 @@ impl ServiceController {
         }
         let services: Vec<Instance> = data.into_iter().map(|d| d.into()).collect();
         services.into_iter().for_each(|i| {
+            Self::log(NewLogEntry::new(LogAction::SystemStartup, None), i.model.id);
             let _ = self.services.insert(i.model.id, i);
         });
         Ok(())
+    }
+    /// Wrapper to log to DB
+    pub fn log(entry: NewLogEntry, sid: SID) {
+        if let Err(e) = DB.insert_log_entry(sid, entry) {
+            error!("Can't insert DB log entry! {}", e);
+        }
     }
 }
 
@@ -88,6 +96,10 @@ impl Handler<StartService> for ServiceController {
                 if let Err(e) = instance.run(ctx.address()) {
                     return Err(ControllerError::StartupIOError(e).into());
                 }
+                Self::log(
+                    NewLogEntry::new(LogAction::ServiceCmdStart, msg.user),
+                    msg.id,
+                );
                 trace!("started");
                 Ok(())
             }
@@ -106,7 +118,13 @@ impl Handler<SendStdin> for ServiceController {
             }
             if let Some(stdin) = service.stdin.as_mut() {
                 match stdin.try_send(format!("{}\n", msg.input)) {
-                    Ok(()) => return Ok(()),
+                    Ok(()) => {
+                        Self::log(
+                            NewLogEntry::new(LogAction::Stdin(msg.input), msg.user),
+                            msg.id,
+                        );
+                        return Ok(());
+                    }
                     Err(e) => {
                         warn!("Unable to send message to {} {}", service.model.name, e);
                         return Err(ControllerError::BrokenPipe.into());
@@ -127,6 +145,10 @@ impl Handler<KillService> for ServiceController {
         if let Some(service) = self.services.get_mut(&msg.id) {
             if let Some(v) = service.kill_handle.take() {
                 let _ = v.send(());
+                Self::log(
+                    NewLogEntry::new(LogAction::ServiceCmdKilled, msg.user),
+                    msg.id,
+                );
                 return Ok(());
             }
             Err(ControllerError::NoServiceHandle.into())
@@ -144,7 +166,6 @@ impl Handler<StopService> for ServiceController {
             if !service.running.load(Ordering::Acquire) {
                 return Err(ControllerError::ServiceStopped.into());
             }
-            // service.stdin = None;
             let stdin = match service.stdin.as_mut() {
                 Some(stdin) => stdin,
                 None => return Err(ControllerError::NoServiceHandle.into()),
@@ -156,6 +177,10 @@ impl Handler<StopService> for ServiceController {
             if let Err(e) = stdin.try_send(format!("{}\n", stop_msg)) {
                 warn!("Can't soft-stop process: {}", e);
             }
+            Self::log(
+                NewLogEntry::new(LogAction::ServiceCmdStop, msg.user),
+                msg.id,
+            );
             service.state.set_state(State::Stopping);
             Ok(())
         } else {
@@ -168,17 +193,34 @@ impl Handler<ServiceStateChanged> for ServiceController {
     type Result = ();
     fn handle(&mut self, msg: ServiceStateChanged, ctx: &mut Context<Self>) {
         if let Some(instance) = self.services.get_mut(&msg.id) {
+            let state = instance.state.get_state();
+
+            let log_action = match state {
+                State::Ended => LogAction::ServiceEnded,
+                State::Running => LogAction::ServiceStarted,
+                State::Crashed => {
+                    LogAction::ServiceCrashed(instance.crash_code.load(Ordering::Acquire))
+                }
+                State::Stopped => LogAction::ServiceStopped,
+                State::Killed => LogAction::ServiceKilled,
+                State::Stopping => {
+                    unreachable!("unreachable: service-stopping-state in state update!")
+                }
+            };
+            Self::log(NewLogEntry::new(log_action, None), msg.id);
+
             if !msg.running {
                 instance.end_time = Some(get_system_time_64());
-                let mut restart =
-                    instance.model.restart && instance.state.get_state() == State::Crashed;
-                if instance.model.restart_always && instance.state.get_state() == State::Ended {
+
+                let mut restart = instance.model.restart && state == State::Crashed;
+                if instance.model.restart_always && state == State::Ended {
                     restart = true;
                 }
 
                 if restart {
                     ctx.address().do_send(StartService {
                         id: instance.model.id,
+                        user: None,
                     });
                 } else {
                     // cleanup
@@ -191,7 +233,7 @@ impl Handler<ServiceStateChanged> for ServiceController {
 }
 
 impl Handler<GetOutput> for ServiceController {
-    type Result = Result<Vec<LogType<String>>, ControllerError>;
+    type Result = Result<Vec<ConsoleType<String>>, ControllerError>;
 
     fn handle(&mut self, msg: GetOutput, _ctx: &mut Context<Self>) -> Self::Result {
         if let Some(instance) = self.services.get(&msg.id) {
@@ -199,10 +241,18 @@ impl Handler<GetOutput> for ServiceController {
             let msg = tty_r
                 .iter()
                 .map(|s| match s {
-                    LogType::State(s) => LogType::State(String::from_utf8_lossy(&s).into_owned()),
-                    LogType::Stderr(s) => LogType::Stderr(String::from_utf8_lossy(&s).into_owned()),
-                    LogType::Stdout(s) => LogType::Stdout(String::from_utf8_lossy(&s).into_owned()),
-                    LogType::Stdin(s) => LogType::Stdin(String::from_utf8_lossy(&s).into_owned()),
+                    ConsoleType::State(s) => {
+                        ConsoleType::State(String::from_utf8_lossy(&s).into_owned())
+                    }
+                    ConsoleType::Stderr(s) => {
+                        ConsoleType::Stderr(String::from_utf8_lossy(&s).into_owned())
+                    }
+                    ConsoleType::Stdout(s) => {
+                        ConsoleType::Stdout(String::from_utf8_lossy(&s).into_owned())
+                    }
+                    ConsoleType::Stdin(s) => {
+                        ConsoleType::Stdin(String::from_utf8_lossy(&s).into_owned())
+                    }
                 })
                 .collect::<Vec<_>>();
             Ok(msg)
@@ -315,6 +365,18 @@ impl Handler<GetServiceState> for ServiceController {
     }
 }
 
+impl Handler<GetLogLatest> for ServiceController {
+    type Result = Result<Vec<LogEntryResolved>, ControllerError>;
+    fn handle(&mut self, msg: GetLogLatest, _ctx: &mut Context<Self>) -> Self::Result {
+        // TODO: refactor, should we directly call the DB from the web API?
+        if let Some(_) = self.services.get(&msg.id) {
+            Ok(DB.service_log_limited(msg.id, msg.amount)?)
+        } else {
+            Err(ControllerError::InvalidInstance(msg.id))
+        }
+    }
+}
+
 impl Handler<LoadServices> for ServiceController {
     type Result = ();
     fn handle(&mut self, msg: LoadServices, ctx: &mut Context<Self>) {
@@ -325,7 +387,10 @@ impl Handler<LoadServices> for ServiceController {
                     let key = key.clone();
                     spawn(
                         ctx.address()
-                            .send(StartService { id: key })
+                            .send(StartService {
+                                id: key,
+                                user: None,
+                            })
                             .map(move |v| {
                                 if let Err(e) = v {
                                     error!("Starting instance {}: {}", key.clone(), e);
@@ -344,8 +409,9 @@ type LoadedService = Instance;
 struct Instance {
     model: Service,
     running: Arc<AtomicBool>,
-    tty: Arc<RwLock<ArrayDeque<[LogType<Vec<u8>>; 2048], Wrapping>>>,
+    tty: Arc<RwLock<ArrayDeque<[ConsoleType<Vec<u8>>; 2048], Wrapping>>>,
     state: StateFlag,
+    crash_code: Arc<AtomicI32>,
     kill_handle: Option<futures::sync::oneshot::Sender<()>>,
     stdin: Option<futures::sync::mpsc::Sender<String>>,
     start_time: Option<u64>,
@@ -353,7 +419,7 @@ struct Instance {
 }
 
 #[derive(Serialize)]
-pub enum LogType<T> {
+pub enum ConsoleType<T> {
     Stdin(T),
     Stdout(T),
     Stderr(T),
@@ -420,10 +486,14 @@ impl Instance {
         let res = self.run_internal(addr);
         if let Err(e) = &res {
             let mut buffer_w = self.tty.write().expect("Can't write buffer!");
-            buffer_w.push_back(LogType::State(
+            buffer_w.push_back(ConsoleType::State(
                 format!("Can't start instance: {}", e).into_bytes(),
             ));
             drop(buffer_w);
+            ServiceController::log(
+                NewLogEntry::new(LogAction::ServiceStartFailed(format!("{}", e)), None),
+                self.model.id,
+            );
         }
         res
     }
@@ -432,12 +502,12 @@ impl Instance {
         if self.model.enabled
             && !self
                 .running
-                .compare_and_swap(false, true, Ordering::Relaxed)
+                .compare_and_swap(false, true, Ordering::Acquire)
         {
             trace!("Starting {}", self.model.name);
             {
                 let mut buffer_w = self.tty.write().expect("Can't write buffer!");
-                buffer_w.push_back(LogType::State(
+                buffer_w.push_back(ConsoleType::State(
                     format!("Starting {}", self.model.name).into_bytes(),
                 ));
                 drop(buffer_w);
@@ -475,14 +545,14 @@ impl Instance {
                     write_all(stdin, bytes)
                         .map(move |(stdin, res)| {
                             let mut buffer_w = buffer_c2.write().expect("Can't write buffer!");
-                            buffer_w.push_back(LogType::Stdin(res));
+                            buffer_w.push_back(ConsoleType::Stdin(res));
 
                             stdin
                         })
                         .map_err(move |e| {
                             error!("Couldn't write to stdin of {}: {}", service_info, e);
                             let mut buffer_w = buffer_c3.write().expect("Can't write buffer!");
-                            buffer_w.push_back(LogType::State(
+                            buffer_w.push_back(ConsoleType::State(
                                 format!("Couldn't write to stdout! \"{}\"", msg).into_bytes(),
                             ));
                             ()
@@ -500,11 +570,11 @@ impl Instance {
             let cycle_stdout = lines
                 .for_each(move |l| {
                     let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
-                    buffer_w.push_back(LogType::Stdout(ansi_esc::strip(l).unwrap()));
+                    buffer_w.push_back(ConsoleType::Stdout(ansi_esc::strip(l).unwrap()));
                     Ok(())
                 })
                 .map_err(|e| {
-                    warn!("From child-future: {}", e);
+                    error!("Error handling stdout: {}", e);
                     ()
                 });
 
@@ -516,17 +586,18 @@ impl Instance {
             let cycle_stderr = lines
                 .for_each(move |l| {
                     let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
-                    buffer_w.push_back(LogType::Stderr(ansi_esc::strip(l).unwrap()));
+                    buffer_w.push_back(ConsoleType::Stderr(ansi_esc::strip(l).unwrap()));
                     Ok(())
                 })
                 .map_err(|e| {
-                    warn!("From child-future: {}", e);
+                    error!("Error handling stderr: {}", e);
                     ()
                 });
 
             // handle child exit-return
             let buffer_c = self.tty.clone();
             let state_c = self.state.clone();
+            let crash_code = self.crash_code.clone();
             let child = child.then(move |res| {
                 let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
                 match res {
@@ -535,10 +606,13 @@ impl Instance {
                         let code_formated = sysexit::from_status(state.clone());
                         #[cfg(target_family = "windows")]
                         let code_formated = "";
-                        buffer_w.push_back(LogType::State(
+                        buffer_w.push_back(ConsoleType::State(
                             format!("Process ended with signal {}({:?})", state, code_formated)
                                 .into_bytes(),
                         ));
+                        if let Some(code) = state.code() {
+                            crash_code.store(code, Ordering::Release);
+                        }
                         match state_c.get_state() {
                             State::Running => {
                                 if state.success() {
@@ -556,7 +630,7 @@ impl Instance {
                         Ok(())
                     }
                     Err(e) => {
-                        buffer_w.push_back(LogType::State(
+                        buffer_w.push_back(ConsoleType::State(
                             format!("Unable to read exit state!").into_bytes(),
                         ));
                         state_c.set_state(State::Crashed);
@@ -566,7 +640,7 @@ impl Instance {
                 }
             });
 
-            // kill-handle
+            // kill-switch handling
             let buffer_c = self.tty.clone();
             let state_c = self.state.clone();
             let (tx, rx) = futures::sync::oneshot::channel::<()>();
@@ -574,11 +648,15 @@ impl Instance {
                 .select(rx.map_err(|_| ()).map(move |_| {
                     state_c.set_state(State::Killed);
                     let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
-                    buffer_w.push_back(LogType::State(String::from("Process killed").into_bytes()));
+                    buffer_w.push_back(ConsoleType::State(
+                        String::from("Process killed").into_bytes(),
+                    ));
                 }))
                 .then(|_x| Ok(()));
             self.kill_handle = Some(tx);
 
+            // future end handler, will always trigger
+            // regardless of kill or process end
             let name_c = self.model.name.clone();
             let running_c = self.running.clone();
             let id_c = self.model.id.clone();
@@ -610,6 +688,7 @@ impl From<Service> for Instance {
             tty: Arc::new(RwLock::new(ArrayDeque::new())),
             state: StateFlag::new(State::Stopped),
             kill_handle: None,
+            crash_code: Arc::new(AtomicI32::new(0)),
             stdin: None,
             start_time: None,
             end_time: None,

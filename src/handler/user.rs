@@ -305,11 +305,11 @@ impl Handler<SetServicePermUser> for UserService {
 }
 
 impl Handler<GetServicePerm> for UserService {
-    type Result = Result<ServicePerm>;
+    type Result = Result<(UID, ServicePerm)>;
 
     fn handle(&mut self, msg: GetServicePerm, _ctx: &mut Context<Self>) -> Self::Result {
         let uid = self.get_session_uid(&msg.session)?;
-        Ok(DB.get_perm_service(uid, msg.service)?)
+        Ok((uid, DB.get_perm_service(uid, msg.service)?))
     }
 }
 

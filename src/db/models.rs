@@ -1,5 +1,6 @@
 pub use crate::web::models::UserMin;
 use bitflags::bitflags;
+use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// User ID
@@ -92,6 +93,8 @@ bitflags! {
         const OUTPUT = 0b00001000;
         /// Kill service
         const KILL   = 0b00010000;
+        /// Log inspection
+        const LOG    = 0b00100000;
     }
 }
 
@@ -116,3 +119,84 @@ pub enum LoginState {
     Complete,
     Requires2FaSetup,
 }
+
+/// LogEntry with Invoker entry instead of ID
+#[derive(Debug, Serialize)]
+pub struct LogEntryResolved {
+    pub time: Date,
+    pub action: LogAction,
+    pub invoker: Option<Invoker>,
+    pub unique: Unique,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct Invoker {
+    pub id: UID,
+    pub name: String,
+}
+
+impl From<FullUser> for Invoker {
+    fn from(user: FullUser) -> Self {
+        Self {
+            id: user.id,
+            name: user.name,
+        }
+    }
+}
+
+/// Full log entry with unique key
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LogEntry {
+    pub time: Date,
+    pub action: LogAction,
+    pub invoker: Option<UID>,
+    pub unique: Unique,
+}
+
+impl LogEntry {
+    pub fn new(unique: Unique, entry: NewLogEntry) -> Self {
+        Self {
+            time: entry.time,
+            action: entry.action,
+            invoker: entry.invoker,
+            unique,
+        }
+    }
+}
+
+/// Log entry without unique key, which is created by DB
+#[derive(Debug)]
+pub struct NewLogEntry {
+    pub time: Date,
+    pub action: LogAction,
+    pub invoker: Option<UID>,
+}
+
+impl NewLogEntry {
+    pub fn new(action: LogAction, invoker: Option<UID>) -> Self {
+        Self {
+            time: Utc::now().timestamp_millis(), // TODO
+            action,
+            invoker,
+        }
+    }
+}
+
+/// Logged action
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub enum LogAction {
+    SystemStartup,
+    ServiceCmdKilled,
+    ServiceKilled,
+    ServiceCmdStop,
+    ServiceEnded,
+    ServiceStopped,
+    ServiceStartFailed(String),
+    ServiceStarted,
+    ServiceCmdStart,
+    ServiceCrashed(i32),
+    Stdin(String),
+}
+
+pub type Date = i64;
+pub type Unique = u64;

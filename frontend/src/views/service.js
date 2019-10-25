@@ -7,8 +7,21 @@ import Error from "../components/error";
 import { fmtDuration } from "../lib/time";
 import Loading from "../components/loading";
 import { Link } from "react-router-dom";
-import { api_state, api_start, api_stop, api_kill, api_service_permissions, Permissions, ServiceState } from "../lib/Api";
+import { api_state, api_start, api_stop, api_kill, api_service_permissions, Permissions, ServiceState, api_log_latest, formatLog } from "../lib/Api";
 import { ButtonGroup } from 'react-bootstrap';
+
+function LogEntry (props) {
+    const entry = props.entry;
+    console.log(entry);
+    const datetime = new Date(entry.time);
+    return (
+        <Row>
+            <Col>{datetime.toLocaleDateString()}</Col>
+            <Col>{datetime.toLocaleTimeString()}</Col>
+            <Col>{formatLog(entry)}</Col>
+        </Row>
+    );
+}
 
 export default class Service extends React.Component {
     constructor(props) {
@@ -25,6 +38,7 @@ export default class Service extends React.Component {
             restart: false,
             permissions: 0,
             intervalId: undefined,
+            log: [],
         };
 
         this.startService = this.startService.bind(this);
@@ -110,7 +124,16 @@ export default class Service extends React.Component {
         }
     }
 
-    intervalUpdate() {
+    getLatestLog () {
+        api_log_latest(this.getSID(), 30)
+            .then(resp => {
+                console.log('resp data',resp.data);
+                this.setState({ log: resp.data });
+            })
+            .catch(err => this.setState({ error: "Unable to fetch logs: " + err }));
+    }
+
+    intervalUpdate () {
         api_state(this.getSID())
             .then(resp => {
                 let data_state = resp.data;
@@ -126,13 +149,13 @@ export default class Service extends React.Component {
             });
     }
 
-    handleFocus() {
+    handleFocus () {
         console.log("activating..");
         var intervalId = setInterval(this.intervalUpdate, 1000);
         this.setState({ intervalId });
     }
 
-    handleBlur() {
+    handleBlur () {
         if (this.state.intervalId !== undefined) {
             console.log("deactivating..");
             clearInterval(this.state.intervalId);
@@ -142,6 +165,7 @@ export default class Service extends React.Component {
 
     componentDidMount () {
         this.refreshState();
+        this.getLatestLog();
         var intervalId = setInterval(this.intervalUpdate, 1000);
         this.setState({ intervalId });
         window.addEventListener("blur", this.handleBlur, false);
@@ -153,6 +177,11 @@ export default class Service extends React.Component {
         return fmtDuration(seconds);
     }
 
+    renderLog() {
+        const log = this.state.log;
+        return log.map((entry) => <LogEntry key={entry.unique} entry={entry} />);
+    }
+
     render () {
         const running = this.state.state === ServiceState.Running;
         const stopping = this.state.state === ServiceState.Stopping;
@@ -160,11 +189,13 @@ export default class Service extends React.Component {
         const perms = this.state.permissions;
         const perm_console = Permissions.hasFlag(perms, Permissions.OUTPUT) || Permissions.hasFlag(perms, Permissions.STDIN_ALL);
 
+        
+
         if (this.state.loading) {
             return (<Loading />);
         } else {
             return (
-                <Container className="pt-md-2">
+                <><Container className="pt-md-2">
                     <Row>
                         <Error error={this.state.error} />
                     </Row>
@@ -200,6 +231,8 @@ export default class Service extends React.Component {
                         </ButtonGroup>
                     </Row>
                 </Container>
+                <Container className="pt-md-2">{this.renderLog()}</Container>
+                </>
             );
         }
     }
