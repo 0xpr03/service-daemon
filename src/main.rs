@@ -20,7 +20,7 @@ mod readline;
 mod settings;
 mod web;
 
-const RUST_LOG: &'static str = "RUST_LOG";
+const RUST_LOG: &str = "RUST_LOG";
 
 fn main() -> Fallible<()> {
     if std::env::var(RUST_LOG).is_err() {

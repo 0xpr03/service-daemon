@@ -346,10 +346,7 @@ pub fn state(
     if let Some(session) = id.identity() {
         Either::A(
             UserService::from_registry()
-                .send(GetServicePerm {
-                    service,
-                    session: session,
-                })
+                .send(GetServicePerm { service, session })
                 .map_err(Error::from)
                 .and_then(move |res| match res {
                     Ok((_, perms)) => {

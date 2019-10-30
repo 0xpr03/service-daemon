@@ -54,7 +54,7 @@ where
     fn poll(&mut self) -> Poll<Option<Vec<u8>>, io::Error> {
         // let n = try_nb!(self.io.read_line(&mut self.line));
         let n = try_nb!(self.io.read_until(b'\n', &mut self.buf));
-        if n == 0 && self.buf.len() == 0 {
+        if n == 0 && self.buf.is_empty() {
             return Ok(None.into());
         }
         // let line = String::from_utf8_lossy(self.bug);
