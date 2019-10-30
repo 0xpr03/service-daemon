@@ -84,17 +84,17 @@ bitflags! {
     #[derive(Serialize, Deserialize)]
     pub struct ServicePerm: u32 {
         /// Start service
-        const START  = 0b00000001;
+        const START  = 0b0000_0001;
         /// Stop service
-        const STOP   = 0b00000010;
+        const STOP   = 0b0000_0010;
         /// Stdin write all
-        const STDIN_ALL = 0b00000100;
+        const STDIN_ALL = 0b0000_0100;
         /// Output inspect
-        const OUTPUT = 0b00001000;
+        const OUTPUT = 0b0000_1000;
         /// Kill service
-        const KILL   = 0b00010000;
+        const KILL   = 0b0001_0000;
         /// Log inspection
-        const LOG    = 0b00100000;
+        const LOG    = 0b0010_0000;
     }
 }
 

@@ -29,7 +29,7 @@ impl From<Box<bincode::ErrorKind>> for DBError {
 
 impl From<sled::TransactionError> for DBError {
     fn from(error: sled::TransactionError) -> Self {
-        DBError::SledTransactionError(error.into())
+        DBError::SledTransactionError(error)
     }
 }
 
@@ -72,24 +72,24 @@ lazy_static! {
 
 mod tree {
     /// UID<->FullUser
-    pub const USER: &'static str = "USER";
+    pub const USER: &str = "USER";
     /// email String<->UID
-    pub const REL_MAIL_UID: &'static str = "REL_MAIL_UID";
+    pub const REL_MAIL_UID: &str = "REL_MAIL_UID";
     /// Specific see meta
-    pub const META: &'static str = "META";
+    pub const META: &str = "META";
     /// "UID_SID"<->ServicePerm
-    pub const PERMISSION_SERVICE: &'static str = "PERMISSIONS_SERVICE";
+    pub const PERMISSION_SERVICE: &str = "PERMISSIONS_SERVICE";
     /// session String<->UID
-    pub const LOGINS: &'static str = "LOGINS";
+    pub const LOGINS: &str = "LOGINS";
     /// session String<->u64 time
-    pub const REL_LOGIN_SEEN: &'static str = "REL_LOGIN_SEEN";
+    pub const REL_LOGIN_SEEN: &str = "REL_LOGIN_SEEN";
     /// service log entries (SID,Db::generate_id)->LogEntry
-    pub const LOG_ENTRIES: &'static str = "LOG_ENTRIES";
+    pub const LOG_ENTRIES: &str = "LOG_ENTRIES";
 }
 
 mod meta {
     /// UID - atomic counter for unique UID generation
-    pub const USER_AUTO_ID: &'static str = "USER_AUTO_ID";
+    pub const USER_AUTO_ID: &str = "USER_AUTO_ID";
 }
 
 #[derive(Clone)]
@@ -165,7 +165,7 @@ impl DB {
         let max = 100;
         for _ in 0..max {
             let id = self.gen_user_id()?;
-            if self.is_valid_uid(&id)? {
+            if self.is_valid_uid(id)? {
                 warn!("Generated user ID exists already! {}", id);
                 continue;
             } else {
@@ -176,7 +176,7 @@ impl DB {
         Err(DBError::TooManyRetries(max).into())
     }
     /// Check if id is valid (taken)
-    fn is_valid_uid(&self, id: &UID) -> Result<bool> {
+    fn is_valid_uid(&self, id: UID) -> Result<bool> {
         Ok(self.open_tree(tree::USER)?.contains_key(ser!(id))?)
     }
 }
@@ -300,7 +300,7 @@ impl super::DBInterface for DB {
                 let outdated = match self.open_tree(tree::REL_LOGIN_SEEN)?.get(ser!(session))? {
                     Some(age_raw) => {
                         let age: u64 = deserialize(&age_raw)?;
-                        super::get_current_time() - age > max_age as u64
+                        super::get_current_time() - age > u64::from(max_age)
                     }
                     None => {
                         warn!("Found inconsisent login without time!");
@@ -347,7 +347,7 @@ impl super::DBInterface for DB {
         for val in tree_rel.iter() {
             let (session, time) = val?;
             let time: u64 = deserialize(&time)?;
-            if super::get_current_time() - time > max_age as u64 {
+            if super::get_current_time() - time > u64::from(max_age) {
                 tree_rel.remove(&session)?;
                 tree_logins.remove(session)?;
                 deleted += 1;
@@ -357,8 +357,8 @@ impl super::DBInterface for DB {
     }
 
     fn update_user(&self, user: FullUser) -> Result<()> {
-        if !self.is_valid_uid(&user.id)? {
-            return Err(super::Error::InvalidUser(user.id).into());
+        if !self.is_valid_uid(user.id)? {
+            return Err(super::Error::InvalidUser(user.id));
         }
         let old_email = self.get_user(user.id)?.email;
         if old_email != user.email {
@@ -383,7 +383,7 @@ impl super::DBInterface for DB {
     fn delete_user(&self, id: UID) -> Result<()> {
         let user: FullUser = match self.open_tree(tree::USER)?.remove(ser!(id))? {
             Some(u) => deserialize(&u)?,
-            None => return Err(super::Error::InvalidUser(id).into()),
+            None => return Err(super::Error::InvalidUser(id)),
         };
         self.open_tree(tree::REL_MAIL_UID)?
             .remove(ser!(user.email))?;
@@ -423,10 +423,8 @@ impl super::DBInterface for DB {
     fn insert_log_entry(&self, service: SID, entry: NewLogEntry) -> Result<()> {
         let key = self.db.generate_id()?;
         let entry = LogEntry::new(key, entry);
-        self.open_tree(tree::LOG_ENTRIES)?.insert(
-            Self::ser_key(&(service, key)),
-            ser!(entry),
-        )?;
+        self.open_tree(tree::LOG_ENTRIES)?
+            .insert(Self::ser_key(&(service, key)), ser!(entry))?;
         Ok(())
     }
 
@@ -435,12 +433,12 @@ impl super::DBInterface for DB {
             .open_tree(tree::LOG_ENTRIES)?
             .scan_prefix(Self::ser_key(&service));
 
-        let mut invoker_map: HashMap<UID,Invoker> = HashMap::new();
+        let mut invoker_map: HashMap<UID, Invoker> = HashMap::new();
         let mut entries = Vec::with_capacity(limit);
         while let Some(e) = iter.next_back() {
-            let (k, v) = e?;
+            let (_, v) = e?;
             let entry: LogEntry = deserialize(&v)?;
-            
+
             // basically try_map to convert uid to Invoker if existing
             let invoker = match entry.invoker {
                 None => None,

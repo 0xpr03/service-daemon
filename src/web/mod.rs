@@ -63,10 +63,10 @@ pub fn start(config: &Web, max_age_secs: i64) -> std::io::Result<Server> {
                 )
                 .service(web::resource("/services").route(web::get().to_async(api::services)))
                 .default_service(web::resource("")
-                    .route(web::get().to(|| HttpResponse::NotFound()))
+                    .route(web::get().to(||HttpResponse::NotFound()))
                     .route(web::route()
                             .guard(guard::Not(guard::Get()))
-                            .to(|| HttpResponse::MethodNotAllowed()),
+                            .to(||HttpResponse::MethodNotAllowed()),
                 ))
             )
             .service(fs::Files::new("/", "./static").index_file("index.html"))

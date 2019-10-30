@@ -52,7 +52,7 @@ impl Supervised for ServiceController {}
 impl ServiceController {
     fn load_services(&mut self, data: Vec<Service>) -> Fallible<()> {
         trace!("Loading services");
-        if self.services.len() != 0 {
+        if !self.services.is_empty() {
             return Err(ControllerError::ServicesNotEmpty.into());
         }
         let services: Vec<Instance> = data.into_iter().map(|d| d.into()).collect();
@@ -90,11 +90,11 @@ impl Handler<StartService> for ServiceController {
         match self.services.get_mut(&msg.id) {
             Some(instance) => {
                 if instance.running.load(Ordering::SeqCst) {
-                    return Err(ControllerError::ServiceRunning.into());
+                    return Err(ControllerError::ServiceRunning);
                 }
                 trace!("starting..");
                 if let Err(e) = instance.run(ctx.address()) {
-                    return Err(ControllerError::StartupIOError(e).into());
+                    return Err(ControllerError::StartupIOError(e));
                 }
                 Self::log(
                     NewLogEntry::new(LogAction::ServiceCmdStart, msg.user),
@@ -103,7 +103,7 @@ impl Handler<StartService> for ServiceController {
                 trace!("started");
                 Ok(())
             }
-            None => Err(ControllerError::InvalidInstance(msg.id).into()),
+            None => Err(ControllerError::InvalidInstance(msg.id)),
         }
     }
 }
@@ -114,7 +114,7 @@ impl Handler<SendStdin> for ServiceController {
     fn handle(&mut self, msg: SendStdin, _ctx: &mut Context<Self>) -> Self::Result {
         if let Some(service) = self.services.get_mut(&msg.id) {
             if !service.running.load(Ordering::Relaxed) {
-                return Err(ControllerError::ServiceStopped.into());
+                return Err(ControllerError::ServiceStopped);
             }
             if let Some(stdin) = service.stdin.as_mut() {
                 match stdin.try_send(format!("{}\n", msg.input)) {
@@ -127,13 +127,13 @@ impl Handler<SendStdin> for ServiceController {
                     }
                     Err(e) => {
                         warn!("Unable to send message to {} {}", service.model.name, e);
-                        return Err(ControllerError::BrokenPipe.into());
+                        return Err(ControllerError::BrokenPipe);
                     }
                 }
             }
-            Err(ControllerError::NoServiceHandle.into())
+            Err(ControllerError::NoServiceHandle)
         } else {
-            Err(ControllerError::InvalidInstance(msg.id).into())
+            Err(ControllerError::InvalidInstance(msg.id))
         }
     }
 }
@@ -151,9 +151,9 @@ impl Handler<KillService> for ServiceController {
                 );
                 return Ok(());
             }
-            Err(ControllerError::NoServiceHandle.into())
+            Err(ControllerError::NoServiceHandle)
         } else {
-            Err(ControllerError::InvalidInstance(msg.id).into())
+            Err(ControllerError::InvalidInstance(msg.id))
         }
     }
 }
@@ -164,15 +164,15 @@ impl Handler<StopService> for ServiceController {
     fn handle(&mut self, msg: StopService, _ctx: &mut Context<Self>) -> Self::Result {
         if let Some(service) = self.services.get_mut(&msg.id) {
             if !service.running.load(Ordering::Acquire) {
-                return Err(ControllerError::ServiceStopped.into());
+                return Err(ControllerError::ServiceStopped);
             }
             let stdin = match service.stdin.as_mut() {
                 Some(stdin) => stdin,
-                None => return Err(ControllerError::NoServiceHandle.into()),
+                None => return Err(ControllerError::NoServiceHandle),
             };
             let stop_msg = match service.model.soft_stop.as_ref() {
                 Some(stop_msg) => stop_msg,
-                None => return Err(ControllerError::NoSoftStop.into()),
+                None => return Err(ControllerError::NoSoftStop),
             };
             if let Err(e) = stdin.try_send(format!("{}\n", stop_msg)) {
                 warn!("Can't soft-stop process: {}", e);
@@ -184,7 +184,7 @@ impl Handler<StopService> for ServiceController {
             service.state.set_state(State::Stopping);
             Ok(())
         } else {
-            Err(ControllerError::InvalidInstance(msg.id).into())
+            Err(ControllerError::InvalidInstance(msg.id))
         }
     }
 }
@@ -212,10 +212,11 @@ impl Handler<ServiceStateChanged> for ServiceController {
             if !msg.running {
                 instance.end_time = Some(get_system_time_64());
 
-                let mut restart = instance.model.restart && state == State::Crashed;
-                if instance.model.restart_always && state == State::Ended {
-                    restart = true;
-                }
+                let restart = if instance.model.restart_always && state == State::Ended {
+                    true
+                } else {
+                    instance.model.restart && state == State::Crashed
+                };
 
                 if restart {
                     ctx.address().do_send(StartService {
@@ -257,7 +258,7 @@ impl Handler<GetOutput> for ServiceController {
                 .collect::<Vec<_>>();
             Ok(msg)
         } else {
-            Err(ControllerError::InvalidInstance(msg.id).into())
+            Err(ControllerError::InvalidInstance(msg.id))
         }
     }
 }
@@ -271,7 +272,7 @@ impl Handler<GetUserServicePermsAll> for ServiceController {
             data.insert(
                 k.clone(),
                 SPMin {
-                    id: k.clone(),
+                    id: *k,
                     name: v.model.name.clone(),
                     has_perm: false,
                 },
@@ -292,7 +293,7 @@ impl Handler<GetServiceIDs> for ServiceController {
     type Result = Result<Vec<SID>, ControllerError>;
 
     fn handle(&mut self, _msg: GetServiceIDs, _ctx: &mut Context<Self>) -> Self::Result {
-        Ok(self.services.values().map(|v| v.model.id.clone()).collect())
+        Ok(self.services.values().map(|v| v.model.id).collect())
     }
 }
 
@@ -369,7 +370,7 @@ impl Handler<GetLogLatest> for ServiceController {
     type Result = Result<Vec<LogEntryResolved>, ControllerError>;
     fn handle(&mut self, msg: GetLogLatest, _ctx: &mut Context<Self>) -> Self::Result {
         // TODO: refactor, should we directly call the DB from the web API?
-        if let Some(_) = self.services.get(&msg.id) {
+        if self.services.get(&msg.id).is_some() {
             Ok(DB.service_log_limited(msg.id, msg.amount)?)
         } else {
             Err(ControllerError::InvalidInstance(msg.id))
@@ -380,11 +381,11 @@ impl Handler<GetLogLatest> for ServiceController {
 impl Handler<LoadServices> for ServiceController {
     type Result = ();
     fn handle(&mut self, msg: LoadServices, ctx: &mut Context<Self>) {
-        if let Ok(_) = self.load_services(msg.data) {
+        if self.load_services(msg.data).is_ok() {
             for (key, val) in self.services.iter() {
                 if val.model.autostart {
                     trace!("Autostarting {}", key);
-                    let key = key.clone();
+                    let key = *key;
                     spawn(
                         ctx.address()
                             .send(StartService {
@@ -393,7 +394,7 @@ impl Handler<LoadServices> for ServiceController {
                             })
                             .map(move |v| {
                                 if let Err(e) = v {
-                                    error!("Starting instance {}: {}", key.clone(), e);
+                                    error!("Starting instance {}: {}", key, e);
                                 }
                             })
                             .map_err(|e| panic!("{}", e)),
@@ -555,7 +556,6 @@ impl Instance {
                             buffer_w.push_back(ConsoleType::State(
                                 format!("Couldn't write to stdout! \"{}\"", msg).into_bytes(),
                             ));
-                            ()
                         })
                 })
                 .map(|_| ());
@@ -575,7 +575,6 @@ impl Instance {
                 })
                 .map_err(|e| {
                     error!("Error handling stdout: {}", e);
-                    ()
                 });
 
             // handle stderr
@@ -591,7 +590,6 @@ impl Instance {
                 })
                 .map_err(|e| {
                     error!("Error handling stderr: {}", e);
-                    ()
                 });
 
             // handle child exit-return
@@ -603,7 +601,7 @@ impl Instance {
                 match res {
                     Ok(state) => {
                         #[cfg(target_family = "unix")]
-                        let code_formated = sysexit::from_status(state.clone());
+                        let code_formated = sysexit::from_status(state);
                         #[cfg(target_family = "windows")]
                         let code_formated = "";
                         buffer_w.push_back(ConsoleType::State(
@@ -631,7 +629,7 @@ impl Instance {
                     }
                     Err(e) => {
                         buffer_w.push_back(ConsoleType::State(
-                            format!("Unable to read exit state!").into_bytes(),
+                            "Unable to read exit state!".to_string().into_bytes(),
                         ));
                         state_c.set_state(State::Crashed);
                         warn!("Error reading process exit status: {}", e);
@@ -659,7 +657,7 @@ impl Instance {
             // regardless of kill or process end
             let name_c = self.model.name.clone();
             let running_c = self.running.clone();
-            let id_c = self.model.id.clone();
+            let id_c = self.model.id;
             let future = child.join3(cycle_stdout, cycle_stderr).then(move |result| {
                 running_c.store(false, Ordering::Relaxed);
                 addr.do_send(ServiceStateChanged {
