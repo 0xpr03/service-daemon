@@ -1,4 +1,4 @@
-use super::error::{StartupError, UserError};
+use super::error::{UserError, ControllerError};
 use super::messages::unchecked::*;
 use super::messages::*;
 use crate::crypto::*;
@@ -26,11 +26,11 @@ pub struct UserService {
     login_max_age: u32,
 }
 
-type Result<T> = ::std::result::Result<T, UserError>;
+type UResult<T> = ::std::result::Result<T, UserError>;
 
 impl UserService {
     /// Returns UID for session if currently fully logged in
-    fn get_session_uid(&self, session: &str) -> Result<UID> {
+    fn get_session_uid(&self, session: &str) -> UResult<UID> {
         use db::models::LoginState as DBLoginState;
         match DB.get_login(session, self.login_max_age)? {
             Some(v) => match v.state {
@@ -45,26 +45,30 @@ impl UserService {
     /// We could also just check the admin state, but this would require a second lookup
     fn setup_admin_permissions(&self) {
         trace!("Setting up admin permissions");
-        let fut = ServiceController::from_registry()
+        actix::spawn(async {
+            match ServiceController::from_registry()
             .send(GetServiceIDs {})
-            .map_err(StartupError::from)
-            .and_then(|response| match response {
+            .await {
                 Ok(services) => {
-                    for user in DB.get_perm_admin().map_err(UserError::from)? {
-                        for service in services.iter() {
-                            DB.set_perm_service(user, *service, ServicePerm::all())
-                                .map_err(UserError::from)?;
+                    if let Err(e) = ||-> Result<(),ControllerError> {
+                        let services = services?;
+                        for user in DB.get_perm_admin().map_err(ControllerError::from)? {
+                            for service in services.iter() {
+                                DB.set_perm_service(user, *service, ServicePerm::all())
+                                    .map_err(UserError::from)?;
+                            }
                         }
+                        Ok(())
+                    }() {
+                        error!("Unable to initialize admin permissions, aborting! {}", e);
                     }
-                    Ok(())
-                }
-                Err(e) => Err(e.into()),
-            })
-            .map_err(|e| {
-                error!("Unable to initialize admin permissions, aborting! {}", e);
-                panic!("Can't init admin permissions, aborting");
-            });
-        actix::spawn(fut);
+                },
+                Err(e) => {
+                    error!("Unable to initialize admin permissions, aborting! {}", e);
+                    panic!("Can't init admin permissions, aborting")
+                },
+            }
+        });
     }
     /// Delete old sessions
     fn cleanup_sessions(&mut self, _context: &mut Context<Self>) {
@@ -73,25 +77,25 @@ impl UserService {
             Err(e) => warn!("Unable to remove old logins: {}", e),
         }
     }
-    fn is_admin(&self, user: UID) -> Result<bool> {
+    fn is_admin(&self, user: UID) -> UResult<bool> {
         Ok(DB.get_user(user)?.admin)
     }
     /// Check if user is admin, errors otherwise
-    fn check_admin(&self, user: UID) -> Result<()> {
+    fn check_admin(&self, user: UID) -> UResult<()> {
         if self.is_admin(user)? {
             Ok(())
         } else {
             Err(UserError::InvalidPermissions)
         }
     }
-    fn get_root_user(&self) -> Result<Option<FullUser>> {
+    fn get_root_user(&self) -> UResult<Option<FullUser>> {
         match DB.get_user(DB.get_root_id()) {
             Ok(user) => Ok(Some(user)),
             Err(db::Error::InvalidUser(_)) => Ok(None),
             Err(e) => Err(e.into()),
         }
     }
-    fn create_user_unchecked(&self, user: NewUser) -> Result<CreateUserResp> {
+    fn create_user_unchecked(&self, user: NewUser) -> UResult<CreateUserResp> {
         let user_enc = NewUserEnc {
             email: user.email,
             name: user.name,
@@ -112,9 +116,9 @@ impl Default for UserService {
 }
 
 impl Handler<StartupCheck> for UserService {
-    type Result = Result<()>;
+    type Result = UResult<()>;
 
-    fn handle(&mut self, _msg: StartupCheck, _ctx: &mut Context<Self>) -> Result<()> {
+    fn handle(&mut self, _msg: StartupCheck, _ctx: &mut Context<Self>) -> UResult<()> {
         let user = self.get_root_user()?;
         let create_root = user.is_none();
         if let Some(user) = user {
@@ -172,7 +176,7 @@ impl Handler<StartupCheck> for UserService {
 }
 
 impl Handler<LoginTOTP> for UserService {
-    type Result = Result<LoginState>;
+    type Result = UResult<LoginState>;
 
     fn handle(&mut self, msg: LoginTOTP, _ctx: &mut Context<Self>) -> Self::Result {
         let mut login = match DB.get_login(&msg.session, self.login_max_age)? {
@@ -201,7 +205,7 @@ impl Handler<LoginTOTP> for UserService {
 }
 
 impl Handler<LoginUser> for UserService {
-    type Result = ResponseActFuture<Self, LoginState, UserError>;
+    type Result = ResponseActFuture<Self, UResult<LoginState>>;
 
     fn handle(&mut self, msg: LoginUser, _ctx: &mut Context<Self>) -> Self::Result {
         if let Err(e) = DB.set_login(&msg.session, None) {
@@ -220,8 +224,11 @@ impl Handler<LoginUser> for UserService {
         let fut =
             blocking(move || bcrypt_verify(&msg.password, &user.password).map(|v| (v, msg, user)));
         let fut = actix::fut::wrap_future::<_, Self>(fut)
-            .map_err(|e, _, _| e.into())
-            .and_then(move |(v, msg, user), _, _| {
+            .then(move |res,_,_| {
+                let (v, msg, user) = match res {
+                    Ok(v) => v,
+                    Err(e) => return Either::Right(err(e.into())),
+                };
                 if v {
                     let state = if user.totp_complete {
                         db::models::LoginState::Missing2Fa
@@ -230,20 +237,20 @@ impl Handler<LoginUser> for UserService {
                     };
                     if let Err(e) = DB.set_login(&msg.session, Some(ActiveLogin { state, id: uid }))
                     {
-                        return Either::B(err(e.into()));
+                        return Either::Right(err(e.into()));
                     }
                     if user.totp_complete {
-                        Either::A(Either::A(ok(LoginState::RequiresTOTP)))
+                        Either::Left(Either::Left(ok(LoginState::RequiresTOTP)))
                     } else {
-                        Either::A(Either::B(ok(LoginState::RequiresTOTPSetup(
+                        Either::Left(Either::Right(ok(LoginState::RequiresTOTPSetup(
                             user.totp.into(),
                         ))))
                     }
                 } else {
                     if let Err(e) = DB.set_login(&msg.session, None) {
-                        return Either::B(err(e.into()));
+                        return Either::Right(err(e.into()));
                     }
-                    Either::B(ok(LoginState::NotLoggedIn))
+                    Either::Right(ok(LoginState::NotLoggedIn))
                 }
             });
         Box::new(fut)
@@ -251,7 +258,7 @@ impl Handler<LoginUser> for UserService {
 }
 
 impl Handler<CheckSession> for UserService {
-    type Result = Result<LoginState>;
+    type Result = UResult<LoginState>;
 
     fn handle(&mut self, msg: CheckSession, _ctx: &mut Context<Self>) -> Self::Result {
         use db::models::LoginState as DBLoginState;
@@ -269,7 +276,7 @@ impl Handler<CheckSession> for UserService {
 }
 
 impl Handler<GetSessionServiceIDs> for UserService {
-    type Result = Result<Vec<SID>>;
+    type Result = UResult<Vec<SID>>;
 
     fn handle(&mut self, msg: GetSessionServiceIDs, _ctx: &mut Context<Self>) -> Self::Result {
         let id = self.get_session_uid(&msg.session)?;
@@ -282,7 +289,7 @@ impl Handler<GetSessionServiceIDs> for UserService {
 }
 
 impl Handler<GetAdminPerm> for UserService {
-    type Result = Result<bool>;
+    type Result = UResult<bool>;
 
     fn handle(&mut self, msg: GetAdminPerm, _ctx: &mut Context<Self>) -> Self::Result {
         let uid = self.get_session_uid(&msg.session)?;
@@ -291,7 +298,7 @@ impl Handler<GetAdminPerm> for UserService {
 }
 
 impl Handler<GetServicePermUser> for UserService {
-    type Result = Result<ServicePerm>;
+    type Result = UResult<ServicePerm>;
 
     fn handle(&mut self, msg: GetServicePermUser, _ctx: &mut Context<Self>) -> Self::Result {
         Ok(DB.get_perm_service(msg.user, msg.service)?)
@@ -299,7 +306,7 @@ impl Handler<GetServicePermUser> for UserService {
 }
 
 impl Handler<SetServicePermUser> for UserService {
-    type Result = Result<()>;
+    type Result = UResult<()>;
 
     fn handle(&mut self, msg: SetServicePermUser, _ctx: &mut Context<Self>) -> Self::Result {
         DB.set_perm_service(msg.user, msg.service, msg.perm)?;
@@ -308,7 +315,7 @@ impl Handler<SetServicePermUser> for UserService {
 }
 
 impl Handler<GetServicePerm> for UserService {
-    type Result = Result<(UID, ServicePerm)>;
+    type Result = UResult<(UID, ServicePerm)>;
 
     fn handle(&mut self, msg: GetServicePerm, _ctx: &mut Context<Self>) -> Self::Result {
         let uid = self.get_session_uid(&msg.session)?;
@@ -317,7 +324,7 @@ impl Handler<GetServicePerm> for UserService {
 }
 
 impl Handler<LogoutUser> for UserService {
-    type Result = Result<()>;
+    type Result = UResult<()>;
 
     fn handle(&mut self, msg: LogoutUser, _ctx: &mut Context<Self>) -> Self::Result {
         DB.set_login(&msg.session, None)?;
@@ -327,7 +334,7 @@ impl Handler<LogoutUser> for UserService {
 }
 
 impl Handler<GetAllUsers> for UserService {
-    type Result = Result<Vec<UserMin>>;
+    type Result = UResult<Vec<UserMin>>;
 
     fn handle(&mut self, _msg: GetAllUsers, _ctx: &mut Context<Self>) -> Self::Result {
         Ok(DB.get_users()?)
@@ -335,7 +342,7 @@ impl Handler<GetAllUsers> for UserService {
 }
 
 impl Handler<CreateUser> for UserService {
-    type Result = Result<CreateUserResp>;
+    type Result = UResult<CreateUserResp>;
 
     fn handle(&mut self, msg: CreateUser, _ctx: &mut Context<Self>) -> Self::Result {
         let uid = self.get_session_uid(&msg.invoker)?;
@@ -345,7 +352,7 @@ impl Handler<CreateUser> for UserService {
 }
 
 impl Handler<ResetUserTOTP> for UserService {
-    type Result = Result<()>;
+    type Result = UResult<()>;
 
     fn handle(&mut self, msg: ResetUserTOTP, _ctx: &mut Context<Self>) -> Self::Result {
         let invoker_id = self.get_session_uid(&msg.invoker)?;
@@ -374,7 +381,7 @@ impl Handler<ResetUserTOTP> for UserService {
 }
 
 impl Handler<SetUserPassword> for UserService {
-    type Result = Result<()>;
+    type Result = UResult<()>;
 
     fn handle(&mut self, msg: SetUserPassword, _ctx: &mut Context<Self>) -> Self::Result {
         let invoker_id = self.get_session_uid(&msg.invoker)?;
@@ -402,7 +409,7 @@ impl Handler<SetUserPassword> for UserService {
 }
 
 impl Handler<SetUserInfo> for UserService {
-    type Result = Result<()>;
+    type Result = UResult<()>;
 
     fn handle(&mut self, msg: SetUserInfo, _ctx: &mut Context<Self>) -> Self::Result {
         let invoker_id = self.get_session_uid(&msg.invoker)?;
@@ -419,7 +426,7 @@ impl Handler<SetUserInfo> for UserService {
 }
 
 impl Handler<GetUserInfo> for UserService {
-    type Result = Result<UserMin>;
+    type Result = UResult<UserMin>;
 
     fn handle(&mut self, msg: GetUserInfo, _ctx: &mut Context<Self>) -> Self::Result {
         Ok(DB.get_user(msg.user)?.into())
@@ -427,7 +434,7 @@ impl Handler<GetUserInfo> for UserService {
 }
 
 impl Handler<DeleteUser> for UserService {
-    type Result = Result<()>;
+    type Result = UResult<()>;
 
     fn handle(&mut self, msg: DeleteUser, _ctx: &mut Context<Self>) -> Self::Result {
         let uid = self.get_session_uid(&msg.invoker)?;
@@ -450,7 +457,7 @@ impl Handler<SetPasswordCost> for UserService {
 }
 
 impl Handler<EditUser> for UserService {
-    type Result = Result<bool>;
+    type Result = UResult<bool>;
 
     fn handle(&mut self, msg: EditUser, _ctx: &mut Context<Self>) -> Self::Result {
         // check admin for different account

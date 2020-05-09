@@ -1,4 +1,4 @@
-use super::error::ControllerError;
+use super::error::*;
 use crate::db::models::{LogAction, LogEntryResolved, NewLogEntry};
 use crate::db::{DBInterface, DB};
 use crate::handler::user::UserService;
@@ -15,14 +15,18 @@ use failure::Fallible;
 use metrohash::MetroHashMap;
 use serde::Serialize;
 use strip_ansi_escapes as ansi_esc;
-use tokio_io::io::write_all;
-use tokio_process::CommandExt;
+use tokio::io::AsyncWriteExt;
+use tokio::io::AsyncBufReadExt;
+use tokio::io::BufReader;
+use tokio::process::Command;
+use futures::stream::StreamExt;
 
-use futures::{self, Future, Stream};
+use futures_util::future::TryFutureExt;
+
+use futures::prelude::*;
 
 use std::collections::{HashMap, HashSet};
-use std::io;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::atomic::Ordering;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize};
 use std::sync::{Arc, RwLock};
@@ -298,7 +302,7 @@ impl Handler<GetServiceIDs> for ServiceController {
 }
 
 impl Handler<GetSessionServices> for ServiceController {
-    type Result = ResponseActFuture<Self, Vec<ServiceState>, ControllerError>;
+    type Result = ResponseActFuture<Self, Result<Vec<ServiceState>, ControllerError>>;
     // kind of breaks separation of concerns, but to make this performant we'll have to call UserService from here
     fn handle(&mut self, msg: GetSessionServices, _ctx: &mut Context<Self>) -> Self::Result {
         let fut = UserService::from_registry()
@@ -307,15 +311,17 @@ impl Handler<GetSessionServices> for ServiceController {
             })
             .map_err(ControllerError::from);
         let fut = actix::fut::wrap_future::<_, Self>(fut);
-        let fut = fut.and_then(|v, actor, _ctx| {
-            let v = match v.map_err(ControllerError::from) {
-                Err(e) => return Either::B(err(e)),
-                Ok(v) => v,
+        let fut = fut.then(|v, actor, _ctx| {
+            // tame Result<Result<K,V>> with early return
+            let v: Vec<SID> = match v.map_err(ControllerError::from) {
+                Err(e) => return Either::Right(err(e)),
+                Ok(Err(e)) => return Either::Right(err(e.into())),
+                Ok(Ok(v)) => v,
             };
             let mut services = HashSet::with_capacity(v.len());
             services.extend(v);
 
-            Either::A(ok(actor
+            Either::Left(ok(actor
                 .services
                 .values()
                 .filter_map(|v| {
@@ -396,8 +402,7 @@ impl Handler<LoadServices> for ServiceController {
                                 if let Err(e) = v {
                                     error!("Starting instance {}: {}", key, e);
                                 }
-                            })
-                            .map_err(|e| panic!("{}", e)),
+                            }),
                     );
                 }
             }
@@ -413,8 +418,8 @@ struct Instance {
     tty: Arc<RwLock<ArrayDeque<[ConsoleType<Vec<u8>>; 2048], Wrapping>>>,
     state: StateFlag,
     crash_code: Arc<AtomicI32>,
-    kill_handle: Option<futures::sync::oneshot::Sender<()>>,
-    stdin: Option<futures::sync::mpsc::Sender<String>>,
+    kill_handle: Option<tokio::sync::oneshot::Sender<()>>,
+    stdin: Option<tokio::sync::mpsc::Sender<String>>,
     start_time: Option<u64>,
     end_time: Option<u64>,
 }
@@ -522,7 +527,7 @@ impl Instance {
             cmd.stdout(Stdio::piped());
             cmd.stdin(Stdio::piped());
             self.state.set_state(State::Running);
-            let mut child = cmd.spawn_async()?;
+            let mut child = cmd.spawn()?;
             self.start_time = Some(get_system_time_64());
             self.end_time = None;
 
@@ -533,72 +538,74 @@ impl Instance {
 
             let service_info = format!("{}-{}", self.model.id, self.model.name);
 
-            // handle stdin
-            let stdin = child.stdin().take().unwrap();
-            let (tx, rx) = futures::sync::mpsc::channel::<String>(16);
+            let mut stdin = child.stdin.take().unwrap();
+            let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(16);
             let buffer_c = self.tty.clone();
-            let fut_stdin = rx
-                .fold(stdin, move |stdin, msg| {
-                    let bytes = msg.clone().into_bytes();
+            // handle stdin
+            let stdin_fut = async move {
+                while let Some(msg) = rx.recv().await {
                     let buffer_c2 = buffer_c.clone();
                     let buffer_c3 = buffer_c.clone();
                     let service_info = service_info.clone();
-                    write_all(stdin, bytes)
-                        .map(move |(stdin, res)| {
+                    match stdin.write_all(msg.as_bytes()).await {
+                        Ok(()) => {
                             let mut buffer_w = buffer_c2.write().expect("Can't write buffer!");
-                            buffer_w.push_back(ConsoleType::Stdin(res));
-
-                            stdin
-                        })
-                        .map_err(move |e| {
+                            buffer_w.push_back(ConsoleType::Stdin(msg.into_bytes()));
+                        },
+                        Err(e) => {
                             error!("Couldn't write to stdin of {}: {}", service_info, e);
                             let mut buffer_w = buffer_c3.write().expect("Can't write buffer!");
                             buffer_w.push_back(ConsoleType::State(
                                 format!("Couldn't write to stdout! \"{}\"", msg).into_bytes(),
                             ));
-                        })
-                })
-                .map(|_| ());
-            spawn(fut_stdin);
+                        }
+                    }
+                }
+            };
             self.stdin = Some(tx);
 
+            let buffer_c = self.tty.clone();
+            let stdout = child.stdout.take().unwrap();
             // handle stdout
-            let stdout = child.stdout().take().unwrap();
-            let reader = io::BufReader::new(stdout);
-            let lines = crate::readline::lines(reader);
-            let buffer_c = self.tty.clone();
-            let cycle_stdout = lines
-                .for_each(move |l| {
-                    let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
-                    buffer_w.push_back(ConsoleType::Stdout(ansi_esc::strip(l).unwrap()));
-                    Ok(())
-                })
-                .map_err(|e| {
-                    error!("Error handling stdout: {}", e);
-                });
+            let stdout_fut = async move {
+                let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
+                while let Some(l) = lines.next().await {
+                    match l {
+                        Err(e) => error!("Error handling stdout: {}", e),
+                        Ok(line) => {
+                            let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
+                            buffer_w.push_back(ConsoleType::Stdout(ansi_esc::strip(line).unwrap()));
+                        }
+                    }
+                }
+            };
 
+            let buffer_c = self.tty.clone();
+            let stderr = child.stderr.take().unwrap();
             // handle stderr
-            let stderr = child.stderr().take().unwrap();
-            let reader = io::BufReader::new(stderr);
-            let lines = crate::readline::lines(reader);
-            let buffer_c = self.tty.clone();
-            let cycle_stderr = lines
-                .for_each(move |l| {
-                    let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
-                    buffer_w.push_back(ConsoleType::Stderr(ansi_esc::strip(l).unwrap()));
-                    Ok(())
-                })
-                .map_err(|e| {
-                    error!("Error handling stderr: {}", e);
-                });
+            let stderr_fut = async move {
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
+                while let Some(l) = lines.next().await {
+                    match l {
+                        Ok(line) => {
+                            let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
+                            buffer_w.push_back(ConsoleType::Stderr(ansi_esc::strip(line).unwrap()));
+                        },
+                        Err(e) => error!("Error handling stderr: {}", e),
+                    }
+                }
+            };
 
-            // handle child exit-return
             let buffer_c = self.tty.clone();
             let state_c = self.state.clone();
             let crash_code = self.crash_code.clone();
-            let child = child.then(move |res| {
+            // handle child exit-return
+            let child_fut = async move {
+                let result = child.await;
                 let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
-                match res {
+                match result {
                     Ok(state) => {
                         #[cfg(target_family = "unix")]
                         let code_formated = sysexit::from_status(state);
@@ -625,7 +632,6 @@ impl Instance {
                             // should we override anyway ?
                             _ => (),
                         }
-                        Ok(())
                     }
                     Err(e) => {
                         buffer_w.push_back(ConsoleType::State(
@@ -633,24 +639,26 @@ impl Instance {
                         ));
                         state_c.set_state(State::Crashed);
                         warn!("Error reading process exit status: {}", e);
-                        Err(())
                     }
                 }
-            });
+            };
 
             // kill-switch handling
             let buffer_c = self.tty.clone();
             let state_c = self.state.clone();
-            let (tx, rx) = futures::sync::oneshot::channel::<()>();
-            let child = child
-                .select(rx.map_err(|_| ()).map(move |_| {
-                    state_c.set_state(State::Killed);
-                    let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
-                    buffer_w.push_back(ConsoleType::State(
-                        String::from("Process killed").into_bytes(),
-                    ));
-                }))
-                .then(|_x| Ok(()));
+            let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+            let exit_fut = async move {
+                tokio::select! {
+                    _ = child_fut => (),
+                    _ = rx.map_err(|_| ()).map(move |_| {
+                            state_c.set_state(State::Killed);
+                            let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
+                            buffer_w.push_back(ConsoleType::State(
+                                String::from("Process killed").into_bytes(),
+                            ));
+                        }) => (),
+                }
+            };
             self.kill_handle = Some(tx);
 
             // future end handler, will always trigger
@@ -658,19 +666,24 @@ impl Instance {
             let name_c = self.model.name.clone();
             let running_c = self.running.clone();
             let id_c = self.model.id;
-            let future = child.join3(cycle_stdout, cycle_stderr).then(move |result| {
+            spawn(async move {
+                let _ = tokio::join!(
+                    exit_fut,
+                    stdin_fut,
+                    stderr_fut,
+                    stdout_fut
+                );
                 running_c.store(false, Ordering::Relaxed);
                 addr.do_send(ServiceStateChanged {
                     id: id_c,
                     running: false,
                 });
-                match result {
-                    Ok(_) => trace!("Service {} stopped", name_c),
-                    Err(_) => error!("Error in child-fut"),
-                }
-                Ok(())
+                trace!("Service {} stopped", name_c);
+                // match result {
+                //     Ok(_) => trace!("Service {} stopped", name_c),
+                //     Err(_) => error!("Error in child-fut"),
+                // }
             });
-            spawn(future);
         } else {
             trace!("Ignoring startup of {}, already running!", self.model.name);
         }

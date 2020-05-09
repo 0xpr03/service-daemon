@@ -181,6 +181,7 @@ pub mod unchecked {
     /// **Unchecked!** internal, set password cost for future passwords  
     /// For startup
     #[derive(Message)]
+    #[rtype(result = "()")]
     pub struct SetPasswordCost {
         pub cost: u32,
     }
@@ -237,6 +238,7 @@ pub mod unchecked {
     /// **Unchecked!** internal, signal service state change  
     /// For service internal use.
     #[derive(Message)]
+    #[rtype(result = "()")]
     pub struct ServiceStateChanged {
         pub id: SID,
         pub running: bool,
@@ -251,6 +253,7 @@ pub mod unchecked {
     /// **Unchecked!** internal, load services  
     /// For startup
     #[derive(Message)]
+    #[rtype(result = "()")]
     pub struct LoadServices {
         pub data: Vec<Service>,
     }
