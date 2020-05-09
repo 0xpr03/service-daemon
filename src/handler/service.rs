@@ -522,6 +522,7 @@ impl Instance {
             let mut cmd = Command::new(&self.model.command);
             //TODO: fix this to use better ENV
             // cmd.env_clear();
+            cmd.kill_on_drop(true);
             cmd.args(&self.model.args);
             cmd.current_dir(&self.model.directory);
             cmd.stderr(Stdio::piped());
