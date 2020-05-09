@@ -8,7 +8,6 @@ extern crate lazy_static;
 use crate::handler::messages;
 use crate::handler::service::ServiceController;
 use crate::handler::user::UserService;
-use futures_util::TryFutureExt;
 
 use actix;
 use actix::prelude::*;
@@ -59,24 +58,26 @@ fn main() -> Fallible<()> {
     //     .map_err(|_| ());
     // actix::spawn(fut);
     let services = settings.services;
-    actix::spawn(async move {
-        ServiceController::from_registry()
-        .send(messages::unchecked::LoadServices {
-            data: services,
-        })
-        .await
-        .map_err(|_|());
-    });
 
     let bcrypt_cost = settings.security.bcrypt_cost;
     actix::spawn(async move {
-        UserService::from_registry()
-        .send(messages::unchecked::SetPasswordCost {
-            cost: bcrypt_cost,
-        }).and_then(|_| UserService::from_registry().send(messages::unchecked::StartupCheck {}))
-        .await
-        .map(|_| ())
-        .map_err(|e| error!("User-Service startup check failed! {}", e));        
+        if let Err(e) = async move {
+            UserService::from_registry()
+            .send(messages::unchecked::SetPasswordCost {
+                cost: bcrypt_cost,
+            }).await?;
+            ServiceController::from_registry()
+            .send(messages::unchecked::LoadServices {
+                data: services,
+            })
+            .await?;
+            UserService::from_registry()
+            .send(messages::unchecked::StartupCheck {})
+            .await??;
+            Ok::<(), failure::Error>(())
+        }.await {
+            error!("Startup failure: {}",e);
+        }
     });
     let _ = web::start(&settings.web, settings.web.max_session_age_secs);
     sys.run()?;

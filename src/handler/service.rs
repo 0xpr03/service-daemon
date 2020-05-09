@@ -64,6 +64,7 @@ impl ServiceController {
             Self::log(NewLogEntry::new(LogAction::SystemStartup, None), i.model.id);
             let _ = self.services.insert(i.model.id, i);
         });
+        trace!("Loaded {} services",self.services.len());
         Ok(())
     }
     /// Wrapper to log to DB
