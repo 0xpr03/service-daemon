@@ -8,7 +8,7 @@ use actix::prelude::*;
 use actix_files as fs;
 use actix_identity::*;
 use actix_web::{error::ResponseError, web, Error, HttpRequest, HttpResponse};
-use nanoid;
+use nanoid::nanoid;
 
 /// Returns session, otherwise returns with InvalidSession http response
 macro_rules! get_session_async {
@@ -495,7 +495,7 @@ pub async fn login(data: web::Json<Login>, id: Identity) -> Result<HttpResponse,
             },
         }
     } else {
-        id.remember(nanoid::generate(64));
+        id.remember(nanoid!(64));
         login_core(id.identity().unwrap(), data).await
     }
 }

@@ -15,8 +15,9 @@ pub enum DBError {
     TooManyRetries(usize),
     #[fail(display = "Internal failure with DB err {}", _0)]
     SledError(#[cause] failure::Error),
-    #[fail(display = "Error with transaction: {}", _0)]
-    SledTransactionError(#[cause] sled::TransactionError),
+    // can't mark a #[cause] due to missing Fail impl on () for <()>
+    #[fail(display = "Error with transaction: {:?}", _0)]
+    SledTransactionError(Box<sled::TransactionError<()>>),
     #[fail(display = "Interal failure with invalid Data {}", _0)]
     BincodeError(#[cause] Box<bincode::ErrorKind>),
 }
@@ -27,15 +28,15 @@ impl From<Box<bincode::ErrorKind>> for DBError {
     }
 }
 
-impl From<sled::TransactionError> for DBError {
-    fn from(error: sled::TransactionError) -> Self {
-        DBError::SledTransactionError(error)
+impl From<sled::TransactionError<()>> for DBError {
+    fn from(error: sled::TransactionError<()>) -> Self {
+        DBError::SledTransactionError(Box::new(error))
     }
 }
 
 // fix for indirection creating misleading compiler errors
-impl From<sled::TransactionError> for super::Error {
-    fn from(error: sled::TransactionError) -> Self {
+impl From<sled::TransactionError<()>> for super::Error {
+    fn from(error: sled::TransactionError<()>) -> Self {
         super::Error::InternalError(error.into())
     }
 }
@@ -101,7 +102,7 @@ impl Default for DB {
     fn default() -> Self {
         Self {
             // TODO: this does NOT return but panic when the DB is already in use
-            db: match Db::open("db.sled") {
+            db: match open("db.sled") {
                 Err(e) => {
                     error!("Unable to start local DB: {}", e);
                     panic!("Unable to start local DB: {}", e);
@@ -183,10 +184,10 @@ impl DB {
 
 impl super::DBInterface for DB {
     fn new_temp() -> Self {
-        let config = ConfigBuilder::default().temporary(true);
+        let config = Config::default().temporary(true);
 
         Self {
-            db: Db::start(config.build()).unwrap(),
+            db: config.open().expect("Can't start local DB!"),
         }
     }
 
@@ -364,7 +365,11 @@ impl super::DBInterface for DB {
         if old_email != user.email {
             debug!("old mail != new mail");
             let tree = self.open_tree(tree::REL_MAIL_UID)?;
-            match tree.cas(ser!(user.email), None as Option<&[u8]>, Some(ser!(user.id)))? {
+            match tree.compare_and_swap(
+                ser!(user.email),
+                None as Option<&[u8]>,
+                Some(ser!(user.id)),
+            )? {
                 Err(_) => {
                     return Err(super::Error::EMailExists);
                 }
@@ -512,7 +517,7 @@ mod test {
     fn test_service_perm() {
         let tmp_dir = tempdir().unwrap();
         let db = DB {
-            db: match Db::open(format!("{}/db", tmp_dir.path().to_string_lossy())) {
+            db: match open(format!("{}/db", tmp_dir.path().to_string_lossy())) {
                 Err(e) => {
                     error!("Unable to start local DB: {}", e);
                     panic!("Unable to start local DB: {}", e);
@@ -544,12 +549,12 @@ mod test {
     #[test]
     #[ignore]
     fn test_range_service_perm() {
-        let config = ConfigBuilder::default().temporary(true);
+        let config = Config::default().temporary(true);
 
         let mut cfg = bincode::config();
         cfg.big_endian();
 
-        let db = Db::start(config.build()).unwrap();
+        let db = config.open().unwrap();
         // take values that require > 1 byte
         db.insert(
             cfg.serialize(&(1, 2)).unwrap(),
