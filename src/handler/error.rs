@@ -154,10 +154,10 @@ impl ResponseError for ControllerError {
                 HttpResponse::BadRequest().body("invalid instance")
             }
             ControllerError::ServiceRunning => {
-                HttpResponse::Conflict().body("Instance not running!")
+                HttpResponse::Conflict().body("Instance already running!")
             }
             ControllerError::ServiceStopped => {
-                HttpResponse::Conflict().body("Instance already running!")
+                HttpResponse::Conflict().body("Instance not running!")
             }
             ControllerError::UserError(u) => u.error_response(),
             ControllerError::BrokenPipe => HttpResponse::InternalServerError().body("Broken pipe!"),
