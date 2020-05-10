@@ -109,6 +109,7 @@ export default class Service extends React.Component {
                 this.setState({ error: "Unable to fetch data: " + err });
             })
             .then(() => {
+                this.getLatestLog();
                 if (!isInterval) {
                     this.setLoading(false);
                 }
@@ -125,12 +126,14 @@ export default class Service extends React.Component {
     }
 
     getLatestLog () {
-        api_log_latest(this.getSID(), 30)
-            .then(resp => {
-                console.log('resp data',resp.data);
-                this.setState({ log: resp.data });
-            })
-            .catch(err => this.setState({ error: "Unable to fetch logs: " + err }));
+        if (Permissions.hasFlag(this.state.permissions, Permissions.LOG)) {
+            api_log_latest(this.getSID(), 30)
+                .then(resp => {
+                    console.log('resp data',resp.data);
+                    this.setState({ log: resp.data });
+                })
+                .catch(err => this.setState({ error: "Unable to fetch logs: " + err }));
+        }
     }
 
     intervalUpdate () {
@@ -165,7 +168,6 @@ export default class Service extends React.Component {
 
     componentDidMount () {
         this.refreshState();
-        this.getLatestLog();
         var intervalId = setInterval(this.intervalUpdate, 1000);
         this.setState({ intervalId });
         window.addEventListener("blur", this.handleBlur, false);
