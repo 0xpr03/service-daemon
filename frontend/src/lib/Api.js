@@ -197,6 +197,7 @@ export function formatLog(entry) {
                     return "Service start by "+ entry.invoker.name;
                 else 
                     return "Service auto start";
+            default: return "Unknown log case: "+entry.action;
         }
     } else {
         switch (Object.keys(entry.action)[0]) {
