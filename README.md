@@ -5,7 +5,7 @@
 Process daemon allowing to start/stop/input processes via your browser, in async Rust.
 
 - [ ] Web Interface
- - [ ] Servrside-Push of changes
+ - [ ] Serverside-Push of changes
  - [X] Inspect console
  - [X] Start/Stop/Kill of services
  - [X] User Management
@@ -16,8 +16,9 @@ Process daemon allowing to start/stop/input processes via your browser, in async
 - [X] Start/Stop
 - [X] Auto-Restart
 - [X] View exit codes etc
+- [x] Log of service state changes
 - [ ] Command-Preset
-- [X] Build-In DB (users,state,logs)
+- [X] Built-In DB (users,state,logs)
 - [ ] DBMS support (mariadb,mysql)
 
 ### Navigation
@@ -41,7 +42,6 @@ And to monitor new software, unstable services etc.
 - Service configuration (start command, parameters..) are not configurable from the web-interface, only via config files.  
   This has some usability drawbacks but decreases the attack surface drastically.
 - You can disable stdin globally for a service.
-- It's written in rust, making it more resiliant to typical buffer overflows.
 
 ### Caveats
 
