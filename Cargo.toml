@@ -36,7 +36,6 @@ serde = {features = ["derive"], version = "1" }
 log = "0.4"
 env_logger = "0.7"
 metrohash = "1"
-tokio-process = "0.2"
 arraydeque = "0.4"
 futures = "0.3"
 futures-util = "0.3"
