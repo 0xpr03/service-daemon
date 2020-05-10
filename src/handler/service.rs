@@ -12,14 +12,14 @@ use actix::prelude::*;
 use actix::spawn;
 use arraydeque::{ArrayDeque, Wrapping};
 use failure::Fallible;
+use futures::stream::StreamExt;
 use metrohash::MetroHashMap;
 use serde::Serialize;
 use strip_ansi_escapes as ansi_esc;
-use tokio::io::AsyncWriteExt;
 use tokio::io::AsyncBufReadExt;
+use tokio::io::AsyncWriteExt;
 use tokio::io::BufReader;
 use tokio::process::Command;
-use futures::stream::StreamExt;
 
 use futures_util::future::TryFutureExt;
 
@@ -64,7 +64,7 @@ impl ServiceController {
             Self::log(NewLogEntry::new(LogAction::SystemStartup, None), i.model.id);
             let _ = self.services.insert(i.model.id, i);
         });
-        trace!("Loaded {} services",self.services.len());
+        trace!("Loaded {} services", self.services.len());
         Ok(())
     }
     /// Wrapper to log to DB
@@ -554,7 +554,7 @@ impl Instance {
                         Ok(()) => {
                             let mut buffer_w = buffer_c2.write().expect("Can't write buffer!");
                             buffer_w.push_back(ConsoleType::Stdin(msg.into_bytes()));
-                        },
+                        }
                         Err(e) => {
                             error!("Couldn't write to stdin of {}: {}", service_info, e);
                             let mut buffer_w = buffer_c3.write().expect("Can't write buffer!");
@@ -595,7 +595,7 @@ impl Instance {
                         Ok(line) => {
                             let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
                             buffer_w.push_back(ConsoleType::Stderr(ansi_esc::strip(line).unwrap()));
-                        },
+                        }
                         Err(e) => error!("Error handling stderr: {}", e),
                     }
                 }
@@ -670,21 +670,13 @@ impl Instance {
             let running_c = self.running.clone();
             let id_c = self.model.id;
             spawn(async move {
-                let _ = tokio::join!(
-                    exit_fut,
-                    stderr_fut,
-                    stdout_fut
-                );
+                let _ = tokio::join!(exit_fut, stderr_fut, stdout_fut);
                 running_c.store(false, Ordering::Relaxed);
                 addr.do_send(ServiceStateChanged {
                     id: id_c,
                     running: false,
                 });
                 trace!("Service {} stopped", name_c);
-                // match result {
-                //     Ok(_) => trace!("Service {} stopped", name_c),
-                //     Err(_) => error!("Error in child-fut"),
-                // }
             });
         } else {
             trace!("Ignoring startup of {}, already running!", self.model.name);
