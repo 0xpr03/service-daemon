@@ -350,6 +350,9 @@ export default class User extends React.Component {
                         <Form.Check type="checkbox"
                             checked={Permissions.hasFlag(perms, Permissions.OUTPUT)}
                             flag={Permissions.OUTPUT} onChange={this.setPermission} label="Stdout inspect" />
+                        <Form.Check type="checkbox"
+                            checked={Permissions.hasFlag(perms, Permissions.LOG)}
+                            flag={Permissions.LOG} onChange={this.setPermission} label="Log view" />
                     </Form>
                 </Modal.Body>
 
