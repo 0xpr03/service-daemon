@@ -29,12 +29,11 @@ macro_rules! assert_admin {
                 .await?;
             match ret {
                 Ok(admin) => {
-                    if !admin { // only catch non-admin
-                        return Ok(
-                            HttpResponse::Unauthorized().json("no perms")
-                        );
+                    if !admin {
+                        // only catch non-admin
+                        return Ok(HttpResponse::Unauthorized().json("no perms"));
                     }
-                },
+                }
                 Err(e) => return Ok(e.error_response()),
             }
         } else {
@@ -58,15 +57,13 @@ macro_rules! assert_perm {
                     if perms.contains($perm) {
                         uid
                     } else {
-                        return Ok(
-                            HttpResponse::Unauthorized().json("no perms")
-                        );
+                        return Ok(HttpResponse::Unauthorized().json("no perms"));
                     }
                 }
                 Err(e) => return Ok(e.error_response()),
             }
         } else {
-            return Ok(UserError::InvalidSession.error_response())
+            return Ok(UserError::InvalidSession.error_response());
         }
     };
 }
@@ -75,14 +72,15 @@ pub async fn change_totp(
     item: web::Path<UserRequest>,
     data: web::Json<ResetTOTP>,
     id: Identity,
-) -> Result<HttpResponse,Error> {
+) -> Result<HttpResponse, Error> {
     let identity = get_session_async!(id);
     UserService::from_registry()
         .send(ResetUserTOTP {
             invoker: identity,
             data: data.into_inner(),
             id: item.user,
-        }).await
+        })
+        .await
         .map_err(Error::from)
         .map(move |res| match res {
             Ok(_) => HttpResponse::NoContent().finish(),
@@ -94,14 +92,15 @@ pub async fn change_password(
     item: web::Path<UserRequest>,
     data: web::Json<SetPassword>,
     id: Identity,
-) -> Result<HttpResponse,Error> {
+) -> Result<HttpResponse, Error> {
     let identity = get_session_async!(id);
     UserService::from_registry()
         .send(SetUserPassword {
             data: data.into_inner(),
             invoker: identity,
             id: item.user,
-        }).await
+        })
+        .await
         .map_err(Error::from)
         .map(move |res| match res {
             Ok(_) => HttpResponse::NoContent().finish(),
@@ -113,7 +112,7 @@ pub async fn fallback(_: HttpRequest) -> actix_web::Result<fs::NamedFile> {
     Ok(fs::NamedFile::open("static/index.html")?)
 }
 
-pub async fn user_list(id: Identity) -> Result<HttpResponse,Error> {
+pub async fn user_list(id: Identity) -> Result<HttpResponse, Error> {
     assert_admin!(id.identity());
     UserService::from_registry()
         .send(unchecked::GetAllUsers {})
@@ -128,7 +127,7 @@ pub async fn user_list(id: Identity) -> Result<HttpResponse,Error> {
 pub async fn get_user_info(
     item: web::Path<UserRequest>,
     id: Identity,
-) -> Result<HttpResponse,Error> {
+) -> Result<HttpResponse, Error> {
     assert_admin!(id.identity());
     UserService::from_registry()
         .send(unchecked::GetUserInfo { user: item.user })
@@ -144,7 +143,7 @@ pub async fn set_user_info(
     item: web::Path<UserRequest>,
     data: web::Json<UserMinData>,
     id: Identity,
-) -> Result<HttpResponse,Error> {
+) -> Result<HttpResponse, Error> {
     let identity = get_session_async!(id);
     let data = data.into_inner();
     UserService::from_registry()
@@ -164,7 +163,7 @@ pub async fn set_user_info(
 pub async fn delete_user(
     data: web::Path<UserRequest>,
     id: Identity,
-) -> Result<HttpResponse,Error> {
+) -> Result<HttpResponse, Error> {
     // verifies user permissions
     match id.identity() {
         None => Ok(UserError::InvalidSession.error_response()),
@@ -178,29 +177,25 @@ pub async fn delete_user(
             .map(move |res| match res {
                 Ok(_) => HttpResponse::NoContent().finish(),
                 Err(e) => e.error_response(),
-            })
-        }
+            }),
+    }
 }
 
-pub async fn create_user(
-    data: web::Json<NewUser>,
-    id: Identity,
-) -> Result<HttpResponse,Error> {
+pub async fn create_user(data: web::Json<NewUser>, id: Identity) -> Result<HttpResponse, Error> {
     // verifies user permissions
     match id.identity() {
         None => Ok(UserError::InvalidSession.error_response()),
-        Some(session) => 
-            UserService::from_registry()
-                .send(CreateUser {
-                    user: data.into_inner(),
-                    invoker: session,
-                })
-                .await
-                .map_err(Error::from)
-                .map(move |res| match res {
-                    Ok(state) => HttpResponse::Ok().json(state),
-                    Err(e) => e.error_response(),
-                })
+        Some(session) => UserService::from_registry()
+            .send(CreateUser {
+                user: data.into_inner(),
+                invoker: session,
+            })
+            .await
+            .map_err(Error::from)
+            .map(move |res| match res {
+                Ok(state) => HttpResponse::Ok().json(state),
+                Err(e) => e.error_response(),
+            }),
     }
 }
 
@@ -208,7 +203,7 @@ pub async fn set_service_permission(
     item: web::Path<PermRequest>,
     data: web::Json<ServicePermWrap>,
     id: Identity,
-) -> Result<HttpResponse,Error> {
+) -> Result<HttpResponse, Error> {
     trace!("Setting service permission {:?}", data);
     assert_admin!(id.identity());
     UserService::from_registry()
@@ -228,7 +223,7 @@ pub async fn set_service_permission(
 pub async fn get_service_permission(
     item: web::Path<PermRequest>,
     id: Identity,
-) -> Result<HttpResponse,Error> {
+) -> Result<HttpResponse, Error> {
     assert_admin!(id.identity());
     UserService::from_registry()
         .send(unchecked::GetServicePermUser {
@@ -248,7 +243,7 @@ pub async fn get_service_permission(
 pub async fn all_user_services(
     item: web::Path<UserRequest>,
     id: Identity,
-) -> Result<HttpResponse,Error> {
+) -> Result<HttpResponse, Error> {
     assert_admin!(id.identity());
     ServiceController::from_registry()
         .send(unchecked::GetUserServicePermsAll { user: item.user })
@@ -264,7 +259,7 @@ pub async fn all_user_services(
 pub async fn session_service_perm(
     id: Identity,
     item: web::Path<ServiceRequest>,
-) -> Result<HttpResponse,Error> {
+) -> Result<HttpResponse, Error> {
     if let Some(session) = id.identity() {
         UserService::from_registry()
             .send(GetServicePerm {
@@ -283,7 +278,7 @@ pub async fn session_service_perm(
 }
 
 /// Return management permissons of current session
-pub async fn session_permissions(id: Identity) -> Result<HttpResponse,Error> {
+pub async fn session_permissions(id: Identity) -> Result<HttpResponse, Error> {
     let session = get_session_async!(id);
     UserService::from_registry()
         .send(GetAdminPerm { session })
@@ -298,7 +293,7 @@ pub async fn session_permissions(id: Identity) -> Result<HttpResponse,Error> {
 pub async fn log_latest(
     item: web::Path<LogLatestRequest>,
     id: Identity,
-) -> Result<HttpResponse,Error> {
+) -> Result<HttpResponse, Error> {
     dbg!(&item);
     let item = item.into_inner();
     assert_perm!(id.identity(), item.service, ServicePerm::LOG);
@@ -317,17 +312,12 @@ pub async fn log_latest(
 
 // TODO: rewrite to also use service macro
 // currently using manual perm fetching for perms.is_empty()
-pub async fn state(
-    item: web::Path<ServiceRequest>,
-    id: Identity,
-) -> Result<HttpResponse,Error> {
+pub async fn state(item: web::Path<ServiceRequest>, id: Identity) -> Result<HttpResponse, Error> {
     let service = item.into_inner().service;
     let session = get_session_async!(id);
     let res = UserService::from_registry()
         .send(GetServicePerm { service, session })
         .await?;
-        // .map_err(Error::from)
-        // .and_then(move |res| match res {
     match res {
         Ok((_, perms)) => {
             if perms.is_empty() {
@@ -351,7 +341,7 @@ pub async fn input(
     item: web::Path<ServiceRequest>,
     data: web::Json<String>,
     id: Identity,
-) -> Result<HttpResponse,Error> {
+) -> Result<HttpResponse, Error> {
     let service = item.into_inner().service;
     let uid = assert_perm!(id.identity(), service, ServicePerm::STDIN_ALL);
     ServiceController::from_registry()
@@ -368,10 +358,7 @@ pub async fn input(
         })
 }
 
-pub async fn start(
-    item: web::Path<ServiceRequest>,
-    id: Identity,
-) -> Result<HttpResponse,Error> {
+pub async fn start(item: web::Path<ServiceRequest>, id: Identity) -> Result<HttpResponse, Error> {
     let service = item.into_inner().service;
     let uid = assert_perm!(id.identity(), service, ServicePerm::START);
     ServiceController::from_registry()
@@ -387,10 +374,7 @@ pub async fn start(
         })
 }
 
-pub async fn kill(
-    item: web::Path<ServiceRequest>,
-    id: Identity,
-) -> Result<HttpResponse,Error> {
+pub async fn kill(item: web::Path<ServiceRequest>, id: Identity) -> Result<HttpResponse, Error> {
     let service = item.into_inner().service;
     let uid = assert_perm!(id.identity(), service, ServicePerm::KILL);
     ServiceController::from_registry()
@@ -406,10 +390,7 @@ pub async fn kill(
         })
 }
 
-pub async fn stop(
-    item: web::Path<ServiceRequest>,
-    id: Identity,
-) -> Result<HttpResponse,Error> {
+pub async fn stop(item: web::Path<ServiceRequest>, id: Identity) -> Result<HttpResponse, Error> {
     let service = item.into_inner().service;
     let uid = assert_perm!(id.identity(), service, ServicePerm::STOP);
     ServiceController::from_registry()
@@ -425,7 +406,7 @@ pub async fn stop(
         })
 }
 
-pub async fn logout(id: Identity) -> Result<HttpResponse,Error> {
+pub async fn logout(id: Identity) -> Result<HttpResponse, Error> {
     let session = get_session_async!(id);
     id.forget();
     UserService::from_registry()
@@ -438,7 +419,7 @@ pub async fn logout(id: Identity) -> Result<HttpResponse,Error> {
         })
 }
 
-async fn login_core(session: String, data: Login) -> Result<HttpResponse,Error> {
+async fn login_core(session: String, data: Login) -> Result<HttpResponse, Error> {
     UserService::from_registry() // LoginUser
         .send(LoginUser {
             email: data.email,
@@ -458,7 +439,7 @@ async fn login_core(session: String, data: Login) -> Result<HttpResponse,Error> 
         })
 }
 
-pub async fn checklogin(id: Identity) -> Result<HttpResponse,Error> {
+pub async fn checklogin(id: Identity) -> Result<HttpResponse, Error> {
     if let Some(session) = id.identity() {
         UserService::from_registry()
             .send(CheckSession { session })
@@ -473,25 +454,20 @@ pub async fn checklogin(id: Identity) -> Result<HttpResponse,Error> {
     }
 }
 
-pub async fn totp(
-    data: web::Json<TOTPValue>,
-    id: Identity,
-) -> Result<HttpResponse,Error> {
+pub async fn totp(data: web::Json<TOTPValue>, id: Identity) -> Result<HttpResponse, Error> {
     let data = data.into_inner();
     if let Some(session) = id.identity() {
         let res = UserService::from_registry()
-                .send(LoginTOTP {
-                    session: session.clone(),
-                    totp: data,
-                })
-                .await?;
-                // .from_err()
-                // .and_then(|resp| {
+            .send(LoginTOTP {
+                session: session.clone(),
+                totp: data,
+            })
+            .await?;
         let v: LoginState = match res {
             Err(e) => return Err(Error::from(e)),
             Ok(v) => v,
         };
-        
+
         Ok(match &v {
             LoginState::LoggedIn(_) => HttpResponse::Accepted().json(v),
             LoginState::NotLoggedIn => HttpResponse::Forbidden().json(v),
@@ -503,10 +479,7 @@ pub async fn totp(
     }
 }
 
-pub async fn login(
-    data: web::Json<Login>,
-    id: Identity,
-) -> Result<HttpResponse,Error> {
+pub async fn login(data: web::Json<Login>, id: Identity) -> Result<HttpResponse, Error> {
     let data = data.into_inner();
     if let Some(session) = id.identity() {
         let res = UserService::from_registry()
@@ -514,14 +487,12 @@ pub async fn login(
                 session: session.clone(),
             })
             .await?;
-            // .from_err()
-            // .and_then(|resp| {
         match res {
             Err(e) => return Err(Error::from(e)),
             Ok(v) => match v {
                 LoginState::LoggedIn(_) => Ok(HttpResponse::BadRequest().json(v)),
                 _ => login_core(session, data).await,
-            }
+            },
         }
     } else {
         id.remember(nanoid::generate(64));
@@ -529,10 +500,7 @@ pub async fn login(
     }
 }
 
-pub async fn output(
-    item: web::Path<ServiceRequest>,
-    id: Identity,
-) -> Result<HttpResponse,Error> {
+pub async fn output(item: web::Path<ServiceRequest>, id: Identity) -> Result<HttpResponse, Error> {
     let service = item.into_inner().service;
     assert_perm!(id.identity(), service, ServicePerm::OUTPUT);
     ServiceController::from_registry()
@@ -545,7 +513,7 @@ pub async fn output(
         })
 }
 
-pub async fn services(id: Identity) -> Result<HttpResponse,Error> {
+pub async fn services(id: Identity) -> Result<HttpResponse, Error> {
     let session = get_session_async!(id);
     ServiceController::from_registry()
         .send(GetSessionServices { session })

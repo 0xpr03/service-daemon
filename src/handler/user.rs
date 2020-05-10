@@ -1,4 +1,4 @@
-use super::error::{UserError, ControllerError};
+use super::error::{ControllerError, UserError};
 use super::messages::unchecked::*;
 use super::messages::*;
 use crate::crypto::*;
@@ -47,10 +47,11 @@ impl UserService {
         trace!("Setting up admin permissions");
         actix::spawn(async {
             match ServiceController::from_registry()
-            .send(GetServiceIDs {})
-            .await {
+                .send(GetServiceIDs {})
+                .await
+            {
                 Ok(services) => {
-                    if let Err(e) = ||-> Result<(),ControllerError> {
+                    if let Err(e) = || -> Result<(), ControllerError> {
                         let services = services?;
                         for user in DB.get_perm_admin().map_err(ControllerError::from)? {
                             for service in services.iter() {
@@ -62,11 +63,11 @@ impl UserService {
                     }() {
                         error!("Unable to initialize admin permissions, aborting! {}", e);
                     }
-                },
+                }
                 Err(e) => {
                     error!("Unable to initialize admin permissions, aborting! {}", e);
                     panic!("Can't init admin permissions, aborting")
-                },
+                }
             }
         });
     }
@@ -223,36 +224,34 @@ impl Handler<LoginUser> for UserService {
 
         let fut =
             blocking(move || bcrypt_verify(&msg.password, &user.password).map(|v| (v, msg, user)));
-        let fut = actix::fut::wrap_future::<_, Self>(fut)
-            .then(move |res,_,_| {
-                let (v, msg, user) = match res {
-                    Ok(v) => v,
-                    Err(e) => return Either::Right(err(e.into())),
-                };
-                if v {
-                    let state = if user.totp_complete {
-                        db::models::LoginState::Missing2Fa
-                    } else {
-                        db::models::LoginState::Requires2FaSetup
-                    };
-                    if let Err(e) = DB.set_login(&msg.session, Some(ActiveLogin { state, id: uid }))
-                    {
-                        return Either::Right(err(e.into()));
-                    }
-                    if user.totp_complete {
-                        Either::Left(Either::Left(ok(LoginState::RequiresTOTP)))
-                    } else {
-                        Either::Left(Either::Right(ok(LoginState::RequiresTOTPSetup(
-                            user.totp.into(),
-                        ))))
-                    }
+        let fut = actix::fut::wrap_future::<_, Self>(fut).then(move |res, _, _| {
+            let (v, msg, user) = match res {
+                Ok(v) => v,
+                Err(e) => return Either::Right(err(e.into())),
+            };
+            if v {
+                let state = if user.totp_complete {
+                    db::models::LoginState::Missing2Fa
                 } else {
-                    if let Err(e) = DB.set_login(&msg.session, None) {
-                        return Either::Right(err(e.into()));
-                    }
-                    Either::Right(ok(LoginState::NotLoggedIn))
+                    db::models::LoginState::Requires2FaSetup
+                };
+                if let Err(e) = DB.set_login(&msg.session, Some(ActiveLogin { state, id: uid })) {
+                    return Either::Right(err(e.into()));
                 }
-            });
+                if user.totp_complete {
+                    Either::Left(Either::Left(ok(LoginState::RequiresTOTP)))
+                } else {
+                    Either::Left(Either::Right(ok(LoginState::RequiresTOTPSetup(
+                        user.totp.into(),
+                    ))))
+                }
+            } else {
+                if let Err(e) = DB.set_login(&msg.session, None) {
+                    return Either::Right(err(e.into()));
+                }
+                Either::Right(ok(LoginState::NotLoggedIn))
+            }
+        });
         Box::new(fut)
     }
 }

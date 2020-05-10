@@ -16,7 +16,6 @@ use failure::Fallible;
 mod crypto;
 mod db;
 mod handler;
-mod readline;
 mod settings;
 mod web;
 
@@ -29,7 +28,7 @@ fn main() -> Fallible<()> {
             #[cfg(debug_assertions)]
             "service_daemon=trace,actix_web=info,actix_server=info",
             #[cfg(not(debug_assertions))]
-            "service_daemon=info,actix_web=info,actix_server=info",
+            "service_daemon=info,actix_web=warn,actix_server=info",
         );
     }
     env_logger::init();
@@ -47,36 +46,25 @@ fn main() -> Fallible<()> {
     // TODO: we can't catch anything except sighub for child processes, hint was to look into daemon(1)
     // let sigint = Signal::new(SIGINT).flatten_stream();
     // let sigterm = Signal::new(SIGTERM).flatten_stream();
-
-    // // Use the `select` combinator to merge these two streams into one
-    // let stream = sigint.select(sigterm);
-    // let fut = stream
-    //     .for_each(|signal| {
-    //         println!("Received signal {}", signal);
-    //         Ok(())
-    //     })
-    //     .map_err(|_| ());
-    // actix::spawn(fut);
     let services = settings.services;
 
     let bcrypt_cost = settings.security.bcrypt_cost;
     actix::spawn(async move {
         if let Err(e) = async move {
             UserService::from_registry()
-            .send(messages::unchecked::SetPasswordCost {
-                cost: bcrypt_cost,
-            }).await?;
+                .send(messages::unchecked::SetPasswordCost { cost: bcrypt_cost })
+                .await?;
             ServiceController::from_registry()
-            .send(messages::unchecked::LoadServices {
-                data: services,
-            })
-            .await?;
+                .send(messages::unchecked::LoadServices { data: services })
+                .await?;
             UserService::from_registry()
-            .send(messages::unchecked::StartupCheck {})
-            .await??;
+                .send(messages::unchecked::StartupCheck {})
+                .await??;
             Ok::<(), failure::Error>(())
-        }.await {
-            error!("Startup failure: {}",e);
+        }
+        .await
+        {
+            error!("Startup failure: {}", e);
         }
     });
     let _ = web::start(&settings.web, settings.web.max_session_age_secs);
