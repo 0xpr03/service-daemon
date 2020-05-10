@@ -544,7 +544,8 @@ impl Instance {
             let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(16);
             let buffer_c = self.tty.clone();
             // handle stdin
-            let stdin_fut = async move {
+            // doesn't end in join on child-kill, thus spawn on its own
+            spawn(async move {
                 while let Some(msg) = rx.recv().await {
                     let buffer_c2 = buffer_c.clone();
                     let buffer_c3 = buffer_c.clone();
@@ -563,7 +564,7 @@ impl Instance {
                         }
                     }
                 }
-            };
+            });
             self.stdin = Some(tx);
 
             let buffer_c = self.tty.clone();
@@ -671,7 +672,6 @@ impl Instance {
             spawn(async move {
                 let _ = tokio::join!(
                     exit_fut,
-                    stdin_fut,
                     stderr_fut,
                     stdout_fut
                 );
