@@ -233,7 +233,12 @@ export default class Service extends React.Component {
                         </ButtonGroup>
                     </Row>
                 </Container>
-                <Container className="pt-md-2">{this.renderLog()}</Container>
+                { Permissions.hasFlag(perms, Permissions.LOG) &&
+                    <Container className="pt-md-2">
+                        <h4>Log</h4>
+                        {this.renderLog()}
+                    </Container>
+                }
                 </>
             );
         }
