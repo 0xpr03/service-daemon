@@ -529,7 +529,15 @@ impl Instance {
             cmd.stdout(Stdio::piped());
             cmd.stdin(Stdio::piped());
             self.state.set_state(State::Running);
-            let mut child = cmd.spawn()?;
+            let mut child = match cmd.spawn() {
+                Ok(v) => v,
+                Err(e) => {
+                    self.state.set_state(State::Crashed);
+                    self.running.store(false, Ordering::Release);
+                    trace!("Failed starting child process.");
+                    return Err(e.into());
+                }
+            };
             self.start_time = Some(get_system_time_64());
             self.end_time = None;
 
