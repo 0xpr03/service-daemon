@@ -15,6 +15,9 @@ use failure::Fallible;
 use futures::stream::StreamExt;
 use metrohash::MetroHashMap;
 use serde::Serialize;
+use std::env::current_dir;
+use std::ffi::OsString;
+use std::path::Path;
 use strip_ansi_escapes as ansi_esc;
 use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncWriteExt;
@@ -504,6 +507,38 @@ impl Instance {
         }
         res
     }
+
+    /// Retrieve command, resolve allow_relative
+    fn command(&self) -> Result<OsString, ::std::io::Error> {
+        Ok(if self.model.allow_relative {
+            let path = Path::new(&self.model.command);
+            if path.is_absolute() {
+                self.model.command.clone().into()
+            } else {
+                let mut dir = current_dir()?;
+                dir.push(path);
+                dir.into_os_string()
+            }
+        } else {
+            self.model.command.clone().into()
+        })
+    }
+
+    /// Retrieve command, resolve allow_relative
+    fn workdir(&self) -> Result<OsString, ::std::io::Error> {
+        Ok(if self.model.allow_relative {
+            if self.model.directory.is_absolute() {
+                self.model.directory.clone().into()
+            } else {
+                let mut dir = current_dir()?;
+                dir.push(&self.model.directory);
+                dir.into_os_string()
+            }
+        } else {
+            self.model.directory.clone().into()
+        })
+    }
+
     /// real service starter
     fn run_internal(&mut self, addr: Addr<ServiceController>) -> Result<(), ::std::io::Error> {
         if self.model.enabled
@@ -519,12 +554,12 @@ impl Instance {
                 ));
                 drop(buffer_w);
             }
-            let mut cmd = Command::new(&self.model.command);
+            let mut cmd = Command::new(self.command()?);
             //TODO: fix this to use better ENV
             // cmd.env_clear();
             cmd.kill_on_drop(true);
             cmd.args(&self.model.args);
-            cmd.current_dir(&self.model.directory);
+            cmd.current_dir(self.workdir()?);
             cmd.stderr(Stdio::piped());
             cmd.stdout(Stdio::piped());
             cmd.stdin(Stdio::piped());

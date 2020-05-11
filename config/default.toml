@@ -14,7 +14,7 @@ bcrypt_cost = 10
 [web]
 # 1 day 60*60*24
 max_session_age_secs = 86400
-# Bind IP, use 0.0.0.0 for anywhere
+# Bind IP, use 0.0.0.0 for anywhere if you know what you're doing
 bind_ip = "127.0.0.1"
 # Bind port
 bind_port = 9000
@@ -23,31 +23,46 @@ bind_port = 9000
 # ID is required to bind user permissions
 id = 0
 # whether the service will be loaded
-enabled = false
+enabled = true
 # service name
-name = "mc-server"
+name = "Mass-IO"
 # start service automatically
 autostart = false
+# allow command to be relative to work-dir of service-daemon
+# otherwise it'll be treated as absolute
+allow_relative = true
 # command to run (application)
-command = "java"
-# absolute paths, see issue #9
-directory = "/foo/bar/"
+command = "target/debug/examples/mass_io"
+# absolute path required if not specified by relative_command
+directory = "target/debug/examples"
 # arguments for command
 args = ["-jar","sample.jar"]
 # stop-command, if set. Send to process stdin for stopping.
 # Otherwise a process kill is required.
-soft_stop = "stop"
+#soft_stop = "stop"
 # restart on crash
 restart = true
-# restart also on signal code 0 (no crash)
-restart_always = true
+# restart also on no crash, normal termination (signal code 0)
+restart_always = false
 
 [[services]]
 id = 1
-enabled = false
-name = "cat utf8-lossy demo"
+enabled = true
+name = "ENV print"
+autostart = false
+allow_relative = true
+command = "target/debug/examples/sec_env"
+directory = "/home"
+args = ["~/.profile"]
+restart = false
+
+[[services]]
+id = 2
+enabled = true
+name = "Ping"
 autostart = true
-command = "/bin/cat"
+allow_relative = true
+command = "target/debug/examples/ping"
 directory = "/home"
 args = ["~/.profile"]
 restart = false

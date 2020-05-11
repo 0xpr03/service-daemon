@@ -2,6 +2,7 @@ use crate::db::models::SID;
 use config::{Config, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 #[derive(Fail, Debug)]
 pub enum SettingsError {
@@ -53,8 +54,10 @@ pub struct Service {
     #[serde(default)]
     pub autostart: bool,
     pub enabled: bool,
+    #[serde(default)]
+    pub allow_relative: bool,
     pub command: String,
-    pub directory: String,
+    pub directory: PathBuf,
     pub args: Vec<String>,
     pub soft_stop: Option<String>,
     #[serde(default)]
@@ -110,7 +113,7 @@ mod tests {
     #[ignore]
     fn test_new() {
         let settings = Settings::new().unwrap();
-        assert_eq!(0, settings.services.len());
+        assert_eq!(3, settings.services.len());
     }
 
     /// Only for toml generation
@@ -137,8 +140,9 @@ mod tests {
                     autostart: true,
                     restart_always: false,
                     enabled: false,
+                    allow_relative: true,
                     command: "some cmd".to_owned(),
-                    directory: "/foo".to_owned(),
+                    directory: "./foo".into(),
                     soft_stop: None,
                     args: Vec::new(),
                     id: 0,
@@ -149,8 +153,9 @@ mod tests {
                     autostart: false,
                     enabled: false,
                     restart_always: true,
+                    allow_relative: true,
                     command: "some cmd2".to_owned(),
-                    directory: "/foobar".to_owned(),
+                    directory: "./foobar".into(),
                     soft_stop: Some("asdf".to_owned()),
                     args: vec!["asd".to_owned(), "def".to_owned()],
                     id: 1,
