@@ -49,10 +49,14 @@ fn main() -> Fallible<()> {
     let services = settings.services;
 
     let bcrypt_cost = settings.security.bcrypt_cost;
+    let max_session_age_secs = settings.web.max_session_age_secs;
     actix::spawn(async move {
         if let Err(e) = async move {
             UserService::from_registry()
-                .send(messages::unchecked::SetPasswordCost { cost: bcrypt_cost })
+                .send(messages::unchecked::SetConfig {
+                    cost: bcrypt_cost,
+                    max_session_age_secs,
+                })
                 .await?;
             ServiceController::from_registry()
                 .send(messages::unchecked::LoadServices { data: services })
@@ -67,7 +71,7 @@ fn main() -> Fallible<()> {
             error!("Startup failure: {}", e);
         }
     });
-    let _ = web::start(&settings.web, settings.web.max_session_age_secs);
+    let _ = web::start(&settings.web, max_session_age_secs);
     sys.run()?;
 
     Ok(())

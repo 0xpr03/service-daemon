@@ -11,7 +11,7 @@ use actix_web::dev::Server;
 use actix_web::middleware::Logger;
 use actix_web::{guard, web, App, HttpResponse, HttpServer};
 
-pub fn start(config: &Web, max_age_secs: i64) -> std::io::Result<Server> {
+pub fn start(config: &Web, max_age_secs: u32) -> std::io::Result<Server> {
     //TODO: add CORS
     Ok(HttpServer::new(move || {
         App::new()
@@ -22,7 +22,7 @@ pub fn start(config: &Web, max_age_secs: i64) -> std::io::Result<Server> {
                     .same_site(SameSite::Strict)
                     // #[cfg(not(debug_assertions))]
                     // .domain(domain.as_str())
-                    .max_age(max_age_secs) // 1 day
+                    .max_age(i64::from(max_age_secs)) // 1 day
                     // .http_only(true) already set by CookieIdentityPolicy
                     .secure(false),
             ))

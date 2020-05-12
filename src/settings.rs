@@ -28,7 +28,7 @@ pub struct Settings {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Web {
-    pub max_session_age_secs: i64,
+    pub max_session_age_secs: u32,
     pub bind_ip: String,
     pub bind_port: u16,
 }

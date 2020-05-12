@@ -447,11 +447,12 @@ impl Handler<DeleteUser> for UserService {
     }
 }
 
-impl Handler<SetPasswordCost> for UserService {
+impl Handler<SetConfig> for UserService {
     type Result = ();
 
-    fn handle(&mut self, msg: SetPasswordCost, _ctx: &mut Context<Self>) {
+    fn handle(&mut self, msg: SetConfig, _ctx: &mut Context<Self>) {
         self.brcypt_cost = msg.cost;
+        self.login_max_age = msg.max_session_age_secs;
     }
 }
 
