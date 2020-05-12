@@ -1,1 +1,1 @@
-This directory contains test services
+This directory contains test services used by the default configuraton

@@ -20,22 +20,22 @@ bind_ip = "127.0.0.1"
 bind_port = 9000
 
 [[services]]
-# ID is required to bind user permissions
+# ID is required to bind user permissions and has to be unique
 id = 0
 # whether the service will be loaded
 enabled = true
 # service name
-name = "Mass-IO"
+name = "TestIO"
 # start service automatically
 autostart = false
 # allow command to be relative to work-dir of service-daemon
 # otherwise it'll be treated as absolute
 allow_relative = true
 # command to run (application)
-command = "target/debug/examples/mass_io"
-# absolute path required if not specified by relative_command
+command = "target/debug/examples/test_io"
+# absolute path required if not specified by allow_relative
 directory = "target/debug/examples"
-# arguments for command
+# arguments for command, set as [] to leave it empty
 args = ["-jar","sample.jar"]
 # stop-command, if set. Send to process stdin for stopping.
 # Otherwise a process kill is required.
@@ -52,8 +52,8 @@ name = "ENV print"
 autostart = false
 allow_relative = true
 command = "target/debug/examples/sec_env"
-directory = "/home"
-args = ["~/.profile"]
+directory = "target/debug/examples"
+args = []
 restart = false
 
 [[services]]
@@ -63,6 +63,17 @@ name = "Ping"
 autostart = true
 allow_relative = true
 command = "target/debug/examples/ping"
-directory = "/home"
-args = ["~/.profile"]
+directory = "target/debug/examples"
+args = []
+restart = false
+
+[[services]]
+id = 3
+enabled = true
+name = "Mass IO"
+autostart = true
+allow_relative = true
+command = "target/debug/examples/mass_io"
+directory = "target/debug/examples"
+args = []
 restart = false

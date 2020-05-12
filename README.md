@@ -67,7 +67,7 @@ $ cd service-daemon
 
 service-daemon is written in Rust, so you'll need to grab a
 [Rust installation](https://www.rust-lang.org/) in order to compile it.
-service-daemon compiles with Rust 1.41.1 or newer stable.
+service-daemon compiles with Rust 1.41.1 stable or newer.
 
 To build the backend in release mode:
 
@@ -82,6 +82,11 @@ $ npm install
 $ npm run build
 ```
 
+If you want to try out the test configuration run also
+```
+$ cargo build --examples
+```
+This will generate the example services specified in `config/default.toml`
 ### Contributing
 
 You can contribute code by opening PRs or interacting with issues.
