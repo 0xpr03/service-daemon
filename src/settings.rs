@@ -58,6 +58,7 @@ pub struct Service {
     pub allow_relative: bool,
     pub command: String,
     pub directory: PathBuf,
+    #[serde(default)]
     pub args: Vec<String>,
     pub soft_stop: Option<String>,
     #[serde(default)]
