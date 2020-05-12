@@ -5,10 +5,10 @@
 Process daemon allowing to start/stop/input processes via your browser, in async Rust.
 
 - [ ] Web Interface
- - [ ] Serverside-Push of changes
- - [X] Inspect console
- - [X] Start/Stop/Kill of services
- - [X] User Management
+  - [ ] Serverside-Push of changes
+  - [X] Inspect console
+  - [X] Start/Stop/Kill of services
+  - [X] User Management
 - [X] 2FA Authentification
 - [X] Autostart
 - [X] Stdout & Stderr
@@ -67,7 +67,7 @@ $ cd service-daemon
 
 service-daemon is written in Rust, so you'll need to grab a
 [Rust installation](https://www.rust-lang.org/) in order to compile it.
-service-daemon compiles with Rust 1.36.0 or newer stable.
+service-daemon compiles with Rust 1.41.1 or newer stable.
 
 To build the backend in release mode:
 
@@ -75,9 +75,10 @@ To build the backend in release mode:
 $ cargo build --release
 ```
 
-To build the frontend you first need [npm & nodejs](https://nodejs.org/en/), then run
+To build the frontend you first need [npm & nodejs](https://nodejs.org/en/), then run inside the `frontend` dir:
 
 ```
+$ npm install
 $ npm run build
 ```
 
