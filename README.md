@@ -55,6 +55,7 @@ And to monitor new software, unstable services etc.
 - Setup 2FA: Now you login with those credentials and setup TOTP (for example andOTP, google authenticator, 1Password)
 - Configure: in /config/default.toml you can now specify your services. Please restart service-daemon to apply those changes.  
   You can also configure everything via ENV variables by appending `sd__` in front. For example `sd__web_bind_port=9000`.
+- To run SD on system startup in systemd (*nix) you can use the provided `service-daemon.service` file, edit paths accordingly and move it to /etc/systemd/systemd. Now run `systemctl daemon-reload` to reload systemd config. Then `systemctl enable service-daemon.service` to enable auto-start and `systemctl start service-daemon.service` to run it now.
 
 ### Building
 

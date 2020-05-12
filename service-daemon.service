@@ -1,0 +1,16 @@
+[Unit]
+Description=Service daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=</path/to/service-daemon>
+WorkingDirectory=</path/to/service-daemon>
+Nice=0
+Restart=on-success
+User=<user>
+Group=<user>
+
+[Install]
+WantedBy=multi-user.target
