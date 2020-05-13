@@ -221,8 +221,14 @@ impl Handler<ServiceStateChanged> for ServiceController {
                     snapshot = instance.model.snapshot_console_on_crash;
                     LogAction::ServiceCrashed(instance.crash_code.load(Ordering::Acquire))
                 }
-                State::Stopped => LogAction::ServiceStopped,
-                State::Killed => LogAction::ServiceKilled,
+                State::Stopped => {
+                    snapshot = instance.model.snapshot_console_on_manual_stop;
+                    LogAction::ServiceStopped
+                }
+                State::Killed => {
+                    snapshot = instance.model.snapshot_console_on_manual_kill;
+                    LogAction::ServiceKilled
+                }
                 State::Stopping => {
                     unreachable!("unreachable: service-stopping-state in state update!")
                 }

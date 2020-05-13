@@ -71,6 +71,10 @@ pub struct Service {
     pub snapshot_console_on_stop: bool,
     #[serde(default = "default_true")]
     pub snapshot_console_on_crash: bool,
+    #[serde(default)]
+    pub snapshot_console_on_manual_stop: bool,
+    #[serde(default)]
+    pub snapshot_console_on_manual_kill: bool,
 }
 
 impl Settings {
@@ -156,6 +160,8 @@ mod tests {
                     args: Vec::new(),
                     snapshot_console_on_stop: true,
                     snapshot_console_on_crash: true,
+                    snapshot_console_on_manual_stop: true,
+                    snapshot_console_on_manual_kill: true,
                     id: 0,
                     restart: true,
                 },
@@ -169,6 +175,8 @@ mod tests {
                     directory: "./foobar".into(),
                     snapshot_console_on_stop: true,
                     snapshot_console_on_crash: true,
+                    snapshot_console_on_manual_stop: true,
+                    snapshot_console_on_manual_kill: true,
                     soft_stop: Some("asdf".to_owned()),
                     args: vec!["asd".to_owned(), "def".to_owned()],
                     id: 1,
