@@ -50,12 +50,17 @@ fn main() -> Fallible<()> {
 
     let bcrypt_cost = settings.security.bcrypt_cost;
     let max_session_age_secs = settings.web.max_session_age_secs;
+    let disable_totp = settings.security.disable_totp;
+    if disable_totp {
+        warn!("TOTP auth disabled!");
+    }
     actix::spawn(async move {
         if let Err(e) = async move {
             UserService::from_registry()
                 .send(messages::unchecked::SetConfig {
                     cost: bcrypt_cost,
                     max_session_age_secs,
+                    disable_totp,
                 })
                 .await?;
             ServiceController::from_registry()

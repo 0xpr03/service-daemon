@@ -157,7 +157,7 @@ mod test {
         assert_eq!(full_user.name, user_new.name);
         assert_eq!(full_user.password, user_new.password_enc);
         assert_eq!(full_user.email, user_new.email);
-        assert_eq!(full_user.totp_complete, false);
+        assert_eq!(full_user.totp_setup_complete, false);
         assert_eq!(false, full_user.admin);
         assert!(!full_user.totp.secret.is_empty());
 
@@ -233,7 +233,7 @@ mod test {
         user_ch.email = String::from("change-email");
         user_ch.verified = false;
         user_ch.totp.secret = String::from("change-secret").into_bytes();
-        user_ch.totp_complete = true;
+        user_ch.totp_setup_complete = true;
         assert_ne!(user_ch, full_user);
 
         db.update_user(user_ch.clone()).unwrap();

@@ -37,6 +37,7 @@ pub struct Web {
 pub struct Security {
     pub password_min_length: usize,
     pub bcrypt_cost: u32,
+    pub disable_totp: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -141,6 +142,7 @@ mod tests {
             security: Security {
                 password_min_length: 10,
                 bcrypt_cost: 10,
+                disable_totp: false,
             },
             web: Web {
                 max_session_age_secs: 60,

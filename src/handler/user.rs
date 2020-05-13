@@ -24,6 +24,7 @@ const CLEANUP_INTERVAL: u64 = 60 * 20; // seconds
 pub struct UserService {
     brcypt_cost: u32,
     login_max_age: u32,
+    disable_totp: bool,
 }
 
 type UResult<T> = ::std::result::Result<T, UserError>;
@@ -112,6 +113,7 @@ impl Default for UserService {
         Self {
             brcypt_cost: 12,
             login_max_age: 3600,
+            disable_totp: false,
         }
     }
 }
@@ -123,7 +125,7 @@ impl Handler<StartupCheck> for UserService {
         let user = self.get_root_user()?;
         let create_root = user.is_none();
         if let Some(user) = user {
-            if !user.totp_complete {
+            if !user.totp_setup_complete {
                 warn!("2FA setup incomplete for root!");
             }
         }
@@ -190,13 +192,13 @@ impl Handler<LoginTOTP> for UserService {
             login.state = db::models::LoginState::Complete;
             DB.set_login(&msg.session, Some(login))?;
             let user_min = UserMin::from(&user);
-            if !user.totp_complete {
-                user.totp_complete = true;
+            if !user.totp_setup_complete {
+                user.totp_setup_complete = true;
                 DB.update_user(user)?;
             }
             Ok(LoginState::LoggedIn(user_min))
         } else {
-            Ok(if user.totp_complete {
+            Ok(if user.totp_setup_complete {
                 LoginState::RequiresTOTP
             } else {
                 LoginState::RequiresTOTPSetup(user.totp.into())
@@ -224,26 +226,37 @@ impl Handler<LoginUser> for UserService {
 
         let fut =
             blocking(move || bcrypt_verify(&msg.password, &user.password).map(|v| (v, msg, user)));
+        let disable_totp = self.disable_totp;
         let fut = actix::fut::wrap_future::<_, Self>(fut).then(move |res, _, _| {
             let (v, msg, user) = match res {
                 Ok(v) => v,
                 Err(e) => return Either::Right(err(e.into())),
             };
             if v {
-                let state = if user.totp_complete {
-                    db::models::LoginState::Missing2Fa
+                let state = if disable_totp {
+                    db::models::LoginState::Complete
                 } else {
-                    db::models::LoginState::Requires2FaSetup
+                    if user.totp_setup_complete {
+                        db::models::LoginState::Missing2Fa
+                    } else {
+                        db::models::LoginState::Requires2FaSetup
+                    }
                 };
                 if let Err(e) = DB.set_login(&msg.session, Some(ActiveLogin { state, id: uid })) {
                     return Either::Right(err(e.into()));
                 }
-                if user.totp_complete {
-                    Either::Left(Either::Left(ok(LoginState::RequiresTOTP)))
+                if disable_totp {
+                    Either::Left(Either::Left(Either::Left(ok(LoginState::LoggedIn(
+                        UserMin::from(user),
+                    )))))
                 } else {
-                    Either::Left(Either::Right(ok(LoginState::RequiresTOTPSetup(
-                        user.totp.into(),
-                    ))))
+                    if user.totp_setup_complete {
+                        Either::Left(Either::Left(Either::Right(ok(LoginState::RequiresTOTP))))
+                    } else {
+                        Either::Left(Either::Right(ok(LoginState::RequiresTOTPSetup(
+                            user.totp.into(),
+                        ))))
+                    }
                 }
             } else {
                 if let Err(e) = DB.set_login(&msg.session, None) {
@@ -372,7 +385,7 @@ impl Handler<ResetUserTOTP> for UserService {
         }
 
         user.totp = crate::crypto::totp_gen_secret();
-        user.totp_complete = false;
+        user.totp_setup_complete = false;
         DB.update_user(user)?;
 
         Ok(())
@@ -453,6 +466,7 @@ impl Handler<SetConfig> for UserService {
     fn handle(&mut self, msg: SetConfig, _ctx: &mut Context<Self>) {
         self.brcypt_cost = msg.cost;
         self.login_max_age = msg.max_session_age_secs;
+        self.disable_totp = msg.disable_totp;
     }
 }
 

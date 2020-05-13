@@ -30,7 +30,7 @@ pub struct FullUser {
     pub verified: bool,
     pub totp: TOTP,
     /// TOTP setup complete
-    pub totp_complete: bool,
+    pub totp_setup_complete: bool,
     pub admin: bool,
 }
 

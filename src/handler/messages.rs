@@ -178,13 +178,14 @@ pub mod unchecked {
         pub user: Option<UID>,
     }
 
-    /// **Unchecked!** internal, set password cost for future passwords  
+    /// **Unchecked!** internal, set user controller settings  
     /// For startup
     #[derive(Message)]
     #[rtype(result = "()")]
     pub struct SetConfig {
         pub cost: u32,
         pub max_session_age_secs: u32,
+        pub disable_totp: bool,
     }
 
     /// **Unchecked!** start service

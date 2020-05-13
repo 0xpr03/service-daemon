@@ -228,7 +228,7 @@ impl super::DBInterface for DB {
             name: new_user.name,
             password: new_user.password_enc,
             totp: crypto::totp_gen_secret(),
-            totp_complete: false,
+            totp_setup_complete: false,
             admin: false,
         };
         let user_tree = self.open_tree(tree::USER)?;
