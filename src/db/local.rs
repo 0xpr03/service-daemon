@@ -436,11 +436,19 @@ impl super::DBInterface for DB {
     ) -> Result<()> {
         let key = self.db.generate_id()?;
         let entry = LogEntry::new(key, entry, console.is_some());
-        self.open_tree(tree::LOG_ENTRIES)?
-            .insert(Self::ser_key(&(service, key)), ser!(entry))?;
-        if let Some(data) = console {
-            self.open_tree(tree::LOG_CONSOLE)?
-                .insert(Self::ser_key(&(service, key)), ser!(data))?;
+
+        let log_entries_tree = self.open_tree(tree::LOG_ENTRIES)?;
+        if let Some(console_data) = console {
+            let log_console_tree = self.open_tree(tree::LOG_CONSOLE)?;
+            (&log_entries_tree, &log_console_tree).transaction(
+                move |(log_entries_tree, log_console_tree)| {
+                    log_entries_tree.insert(Self::ser_key(&(service, key)), ser!(entry))?;
+                    log_console_tree.insert(Self::ser_key(&(service, key)), ser!(console_data))?;
+                    Ok(())
+                },
+            )?;
+        } else {
+            log_entries_tree.insert(Self::ser_key(&(service, key)), ser!(entry))?;
         }
         Ok(())
     }
