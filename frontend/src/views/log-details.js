@@ -7,10 +7,7 @@ import Button from "react-bootstrap/Button";
 import Loading from "../components/loading";
 import Error from "../components/error";
 import { api_service_permissions, Permissions, api_log_details, api_log_console, formatLog } from "../lib/Api";
-import Form from "react-bootstrap/Form";
-import { fmtDuration } from '../lib/time';
 import { Link } from "react-router-dom";
-import { animateScroll } from "react-scroll";
 
 export default class LogDetails extends React.Component {
     constructor(props) {
