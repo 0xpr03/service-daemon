@@ -1,6 +1,6 @@
 use crate::crypto;
 use crate::db::models as dbmodels;
-pub use crate::db::models::{ServicePerm, Session, SID, UID};
+pub use crate::db::models::{LogID, ServicePerm, Session, SID, UID};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
@@ -12,6 +12,12 @@ pub struct ServiceRequest {
 pub struct LogLatestRequest {
     pub service: SID,
     pub amount: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LogRequest {
+    pub service: SID,
+    pub log_id: LogID,
 }
 
 #[derive(Debug, Deserialize)]

@@ -70,8 +70,13 @@ pub trait DBInterface: Sized {
     fn delete_old_logins(&self, max_age: u32) -> Result<usize>;
     /// Get (reserved) root UID
     fn get_root_id(&self) -> UID;
-    /// Insert new service log entry
-    fn insert_log_entry(&self, service: SID, entry: NewLogEntry) -> Result<()>;
+    /// Insert new service log entry, returns log entry ID
+    fn insert_log_entry(
+        &self,
+        service: SID,
+        entry: NewLogEntry,
+        console: Option<ConsoleOutput>,
+    ) -> Result<()>;
     /// Get last n log entries for service
     fn service_log_limited(&self, service: SID, limit: usize) -> Result<Vec<LogEntryResolved>>;
     /// Get service log entries between two dates
@@ -80,6 +85,15 @@ pub trait DBInterface: Sized {
     ///
     /// Returns none if no entries exist
     fn service_log_minmax(&self, service: SID) -> Result<Option<(Date, Date)>>;
+    /// Get service log console content
+    fn get_service_console_log(&self, service: SID, log_id: LogID)
+        -> Result<Option<ConsoleOutput>>;
+    /// Return service log entry details
+    fn get_service_log_details(
+        &self,
+        service: SID,
+        log_id: LogID,
+    ) -> Result<Option<LogEntryResolved>>;
 }
 
 lazy_static! {

@@ -107,6 +107,8 @@ impl From<MailboxError> for UserError {
 pub enum ControllerError {
     #[fail(display = "Failed to load services from data, services already loaded!")]
     ServicesNotEmpty,
+    #[fail(display = "Invalid log ID: {}", _0)]
+    InvalidLog(crate::db::models::LogID),
     #[fail(display = "Invalid instance ID: {}", _0)]
     InvalidInstance(SID),
     #[fail(display = "Unable to start, IO error: {}", _0)]
@@ -153,6 +155,7 @@ impl ResponseError for ControllerError {
             ControllerError::InvalidInstance(_) => {
                 HttpResponse::BadRequest().body("invalid instance")
             }
+            ControllerError::InvalidLog(_) => HttpResponse::BadRequest().body("invalid log"),
             ControllerError::ServiceRunning => {
                 HttpResponse::Conflict().body("Instance already running!")
             }

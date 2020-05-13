@@ -294,13 +294,62 @@ pub async fn log_latest(
     item: web::Path<LogLatestRequest>,
     id: Identity,
 ) -> Result<HttpResponse, Error> {
-    dbg!(&item);
     let item = item.into_inner();
     assert_perm!(id.identity(), item.service, ServicePerm::LOG);
     ServiceController::from_registry()
         .send(unchecked::GetLogLatest {
             id: item.service,
             amount: item.amount,
+        })
+        .await
+        .map_err(Error::from)
+        .map(|response| match response {
+            Ok(v) => HttpResponse::Ok().json(v),
+            Err(e) => e.error_response(),
+        })
+}
+
+pub async fn log_details(item: web::Path<LogRequest>, id: Identity) -> Result<HttpResponse, Error> {
+    let item = item.into_inner();
+    assert_perm!(id.identity(), item.service, ServicePerm::LOG);
+    ServiceController::from_registry()
+        .send(unchecked::GetLogDetails {
+            id: item.service,
+            log_id: item.log_id,
+        })
+        .await
+        .map_err(Error::from)
+        .map(|response| match response {
+            Ok(v) => HttpResponse::Ok().json(v),
+            Err(e) => e.error_response(),
+        })
+}
+
+pub async fn log_console(item: web::Path<LogRequest>, id: Identity) -> Result<HttpResponse, Error> {
+    let item = item.into_inner();
+    // custom assert_perm due to output & log permissions
+    if let Some(session) = id.identity() {
+        let ret = UserService::from_registry()
+            .send(GetServicePerm {
+                service: item.service,
+                session: session,
+            })
+            .await?;
+        match ret {
+            Ok((_, perms)) => {
+                if !(perms.contains(ServicePerm::OUTPUT) && perms.contains(ServicePerm::LOG)) {
+                    return Ok(HttpResponse::Unauthorized().json("no perms"));
+                }
+            }
+            Err(e) => return Ok(e.error_response()),
+        }
+    } else {
+        return Ok(UserError::InvalidSession.error_response());
+    }
+    ServiceController::from_registry()
+        .send(unchecked::GetLogConsole {
+            id: item.service,
+            log_id: item.log_id,
         })
         .await
         .map_err(Error::from)

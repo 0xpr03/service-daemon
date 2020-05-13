@@ -18,7 +18,12 @@ function LogEntry (props) {
         <Row>
             <Col>{datetime.toLocaleDateString()}</Col>
             <Col>{datetime.toLocaleTimeString()}</Col>
-            <Col>{formatLog(entry)}</Col>
+            <Col>{formatLog(entry)}
+            {
+                entry.console_log && (
+                    <Link className="ml1" to={{ pathname: "/service/" + props.service + "/log/"+entry.id }}>Details</Link>
+                )
+            }</Col>
         </Row>
     );
 }
@@ -181,7 +186,8 @@ export default class Service extends React.Component {
 
     renderLog() {
         const log = this.state.log;
-        return log.map((entry) => <LogEntry key={entry.unique} entry={entry} />);
+        const service = this.getSID();
+        return log.map((entry) => <LogEntry key={entry.unique} entry={entry} service={service} />);
     }
 
     render () {
@@ -190,8 +196,7 @@ export default class Service extends React.Component {
         const stopped = !running && !stopping;
         const perms = this.state.permissions;
         const perm_console = Permissions.hasFlag(perms, Permissions.OUTPUT) || Permissions.hasFlag(perms, Permissions.STDIN_ALL);
-
-        
+        const perm_log = Permissions.hasFlag(perms, Permissions.LOG);
 
         if (this.state.loading) {
             return (<Loading />);
@@ -233,11 +238,11 @@ export default class Service extends React.Component {
                         </ButtonGroup>
                     </Row>
                 </Container>
-                { Permissions.hasFlag(perms, Permissions.LOG) &&
-                    <Container className="pt-md-2">
+                { perm_log &&
+                    (<Container className="pt-md-2">
                         <h4>Log</h4>
                         {this.renderLog()}
-                    </Container>
+                    </Container>)
                 }
                 </>
             );

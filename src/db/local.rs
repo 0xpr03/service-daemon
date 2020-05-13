@@ -13,12 +13,12 @@ pub enum DBError {
     TreeOpenFailed(#[cause] sled::Error, &'static str),
     #[fail(display = "Failed after retrying {} times", _0)]
     TooManyRetries(usize),
-    #[fail(display = "Internal failure with DB err {}", _0)]
+    #[fail(display = "Internal failure with DB err: {}", _0)]
     SledError(#[cause] failure::Error),
     // can't mark a #[cause] due to missing Fail impl on () for <()>
     #[fail(display = "Error with transaction: {:?}", _0)]
     SledTransactionError(Box<sled::TransactionError<()>>),
-    #[fail(display = "Interal failure with invalid Data {}", _0)]
+    #[fail(display = "Interal failure with invalid Data: {}", _0)]
     BincodeError(#[cause] Box<bincode::ErrorKind>),
 }
 
@@ -86,6 +86,9 @@ mod tree {
     pub const REL_LOGIN_SEEN: &str = "REL_LOGIN_SEEN";
     /// service log entries (SID,Db::generate_id)->LogEntry
     pub const LOG_ENTRIES: &str = "LOG_ENTRIES";
+    /// service log console snapshots (LogEntry additional data)
+    /// (SID,Db::generate_id)->ConsoleOutput
+    pub const LOG_CONSOLE: &str = "LOG_CONSOLE";
 }
 
 mod meta {
@@ -425,12 +428,62 @@ impl super::DBInterface for DB {
         Ok(None)
     }
 
-    fn insert_log_entry(&self, service: SID, entry: NewLogEntry) -> Result<()> {
+    fn insert_log_entry(
+        &self,
+        service: SID,
+        entry: NewLogEntry,
+        console: Option<ConsoleOutput>,
+    ) -> Result<()> {
         let key = self.db.generate_id()?;
-        let entry = LogEntry::new(key, entry);
+        let entry = LogEntry::new(key, entry, console.is_some());
         self.open_tree(tree::LOG_ENTRIES)?
             .insert(Self::ser_key(&(service, key)), ser!(entry))?;
+        if let Some(data) = console {
+            self.open_tree(tree::LOG_CONSOLE)?
+                .insert(Self::ser_key(&(service, key)), ser!(data))?;
+        }
         Ok(())
+    }
+
+    fn get_service_console_log(
+        &self,
+        service: SID,
+        log_id: LogID,
+    ) -> Result<Option<ConsoleOutput>> {
+        if let Some(v) = self
+            .open_tree(tree::LOG_CONSOLE)?
+            .get(Self::ser_key(&(service, log_id)))?
+        {
+            return Ok(Some(deserialize(&v)?));
+        }
+        Ok(None)
+    }
+
+    fn get_service_log_details(
+        &self,
+        service: SID,
+        log_id: LogID,
+    ) -> Result<Option<LogEntryResolved>> {
+        if let Some(v) = self
+            .open_tree(tree::LOG_ENTRIES)?
+            .get(Self::ser_key(&(service, log_id)))?
+        {
+            let entry: LogEntry = deserialize(&v)?;
+            let invoker = match entry.invoker {
+                None => None,
+                Some(uid) => Some(Invoker::from(self.get_user(uid)?)),
+            };
+
+            let entry = LogEntryResolved {
+                time: entry.time,
+                action: entry.action,
+                id: entry.log_id,
+                invoker,
+                console_log: entry.console_log,
+            };
+            return Ok(Some(entry));
+        }
+        Ok(None)
     }
 
     fn service_log_limited(&self, service: SID, limit: usize) -> Result<Vec<LogEntryResolved>> {
@@ -460,8 +513,9 @@ impl super::DBInterface for DB {
             let entry = LogEntryResolved {
                 time: entry.time,
                 action: entry.action,
-                unique: entry.unique,
+                id: entry.log_id,
                 invoker,
+                console_log: entry.console_log,
             };
             entries.push(entry);
             if entries.len() >= limit {

@@ -124,7 +124,10 @@ export default class IO extends React.Component {
             <Container fluid={true} className="h-100 pt-md-2">
                 <div className="d-flex flex-column h-100">
                     <Row><Error error={this.state.error} /></Row>
-                    <Row><Col><h3>{this.state.name}</h3></Col><Col><Button as={Link} to={"/service/" + service}>Back to service</Button></Col></Row>
+                    <Row>
+                        <Col><h3>{this.state.name}</h3></Col>
+                        <Col><Button as={Link} to={"/service/" + service}>Back to service</Button></Col>
+                    </Row>
                     <Row><Col>Uptime: {this.uptime()}</Col></Row>
                     <Row id="output" className="d-flex flex-grow-1 flex-fill overflow-auto console-wrapper">
                         {show_output ? (

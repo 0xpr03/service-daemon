@@ -9,7 +9,7 @@ fn main() -> io::Result<()> {
         eprintln!("Got non-continue signal, aborting.");
         return Ok(());
     }
-    
+
     let stdout = io::stdout();
     let mut stdout_handle = stdout.lock();
     let stderr = io::stderr();

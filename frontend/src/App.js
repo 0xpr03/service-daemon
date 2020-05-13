@@ -5,6 +5,7 @@ import {
   Redirect,
   NavLink
 } from "react-router-dom";
+import LogDetails from "./views/log-details";
 import IO from "./views/io";
 import Login from "./views/login";
 import Users from "./views/users";
@@ -118,6 +119,7 @@ export default class App extends React.Component {
             <PrivateRoute path="/" exact component={Overview} />
             <PrivateRoute path="/service/:service" exact component={Service} />
             <PrivateRoute path="/service/:service/console" component={IO} />
+            <PrivateRoute path="/service/:service/log/:log" component={LogDetails} />
             <PrivateRoute path="/about/" component={About} />
             <PrivateRoute path="/settings/" component={Settings} />
             <PrivateRoute path="/users/" component={Users} />

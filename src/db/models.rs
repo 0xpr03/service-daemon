@@ -34,6 +34,16 @@ pub struct FullUser {
     pub admin: bool,
 }
 
+pub type ConsoleOutput = Vec<ConsoleType<String>>;
+
+#[derive(Serialize, Deserialize)]
+pub enum ConsoleType<T> {
+    Stdin(T),
+    Stdout(T),
+    Stderr(T),
+    State(T),
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(Clone, PartialEq))]
 pub struct TOTP {
@@ -126,7 +136,8 @@ pub struct LogEntryResolved {
     pub time: Date,
     pub action: LogAction,
     pub invoker: Option<Invoker>,
-    pub unique: Unique,
+    pub id: LogID,
+    pub console_log: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -150,16 +161,19 @@ pub struct LogEntry {
     pub time: Date,
     pub action: LogAction,
     pub invoker: Option<UID>,
-    pub unique: Unique,
+    pub log_id: LogID,
+    /// true if console log exists
+    pub console_log: bool,
 }
 
 impl LogEntry {
-    pub fn new(unique: Unique, entry: NewLogEntry) -> Self {
+    pub fn new(log_id: LogID, entry: NewLogEntry, console_log: bool) -> Self {
         Self {
             time: entry.time,
             action: entry.action,
             invoker: entry.invoker,
-            unique,
+            log_id,
+            console_log: console_log,
         }
     }
 }
@@ -199,4 +213,4 @@ pub enum LogAction {
 }
 
 pub type Date = i64;
-pub type Unique = u64;
+pub type LogID = u64;

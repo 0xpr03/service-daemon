@@ -44,6 +44,10 @@ args = ["-jar","sample.jar"]
 restart = true
 # restart also on no crash, normal termination (signal code 0)
 restart_always = false
+# Save last console output on service stop (non-user invoked)
+snapshot_console_on_stop = true
+# Save last consol output on service crash, default true
+snapshot_console_on_crash = true
 
 [[services]]
 id = 1

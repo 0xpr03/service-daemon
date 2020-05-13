@@ -1,5 +1,5 @@
 use super::error::*;
-use crate::db::models::{LogAction, LogEntryResolved, NewLogEntry};
+use crate::db::models::{ConsoleOutput, ConsoleType, LogAction, LogEntryResolved, NewLogEntry};
 use crate::db::{DBInterface, DB};
 use crate::handler::user::UserService;
 use crate::messages::unchecked::*;
@@ -64,15 +64,19 @@ impl ServiceController {
         }
         let services: Vec<Instance> = data.into_iter().map(|d| d.into()).collect();
         services.into_iter().for_each(|i| {
-            Self::log(NewLogEntry::new(LogAction::SystemStartup, None), i.model.id);
+            Self::log(
+                NewLogEntry::new(LogAction::SystemStartup, None),
+                i.model.id,
+                None,
+            );
             let _ = self.services.insert(i.model.id, i);
         });
         trace!("Loaded {} services", self.services.len());
         Ok(())
     }
     /// Wrapper to log to DB
-    pub fn log(entry: NewLogEntry, sid: SID) {
-        if let Err(e) = DB.insert_log_entry(sid, entry) {
+    pub fn log(entry: NewLogEntry, sid: SID, console_log: Option<ConsoleOutput>) {
+        if let Err(e) = DB.insert_log_entry(sid, entry, console_log) {
             error!("Can't insert DB log entry! {}", e);
         }
     }
@@ -107,6 +111,7 @@ impl Handler<StartService> for ServiceController {
                 Self::log(
                     NewLogEntry::new(LogAction::ServiceCmdStart, msg.user),
                     msg.id,
+                    None,
                 );
                 trace!("started");
                 Ok(())
@@ -130,6 +135,7 @@ impl Handler<SendStdin> for ServiceController {
                         Self::log(
                             NewLogEntry::new(LogAction::Stdin(msg.input), msg.user),
                             msg.id,
+                            None,
                         );
                         return Ok(());
                     }
@@ -156,6 +162,7 @@ impl Handler<KillService> for ServiceController {
                 Self::log(
                     NewLogEntry::new(LogAction::ServiceCmdKilled, msg.user),
                     msg.id,
+                    None,
                 );
                 return Ok(());
             }
@@ -188,6 +195,7 @@ impl Handler<StopService> for ServiceController {
             Self::log(
                 NewLogEntry::new(LogAction::ServiceCmdStop, msg.user),
                 msg.id,
+                None,
             );
             service.state.set_state(State::Stopping);
             Ok(())
@@ -202,11 +210,15 @@ impl Handler<ServiceStateChanged> for ServiceController {
     fn handle(&mut self, msg: ServiceStateChanged, ctx: &mut Context<Self>) {
         if let Some(instance) = self.services.get_mut(&msg.id) {
             let state = instance.state.get_state();
-
+            let mut snapshot = false;
             let log_action = match state {
-                State::Ended => LogAction::ServiceEnded,
+                State::Ended => {
+                    snapshot = instance.model.snapshot_console_on_stop;
+                    LogAction::ServiceEnded
+                }
                 State::Running => LogAction::ServiceStarted,
                 State::Crashed => {
+                    snapshot = instance.model.snapshot_console_on_crash;
                     LogAction::ServiceCrashed(instance.crash_code.load(Ordering::Acquire))
                 }
                 State::Stopped => LogAction::ServiceStopped,
@@ -215,7 +227,13 @@ impl Handler<ServiceStateChanged> for ServiceController {
                     unreachable!("unreachable: service-stopping-state in state update!")
                 }
             };
-            Self::log(NewLogEntry::new(log_action, None), msg.id);
+
+            let log_data = match snapshot {
+                true => Some(instance.console_output()),
+                false => None,
+            };
+
+            Self::log(NewLogEntry::new(log_action, None), msg.id, log_data);
 
             if !msg.running {
                 instance.end_time = Some(get_system_time_64());
@@ -242,29 +260,11 @@ impl Handler<ServiceStateChanged> for ServiceController {
 }
 
 impl Handler<GetOutput> for ServiceController {
-    type Result = Result<Vec<ConsoleType<String>>, ControllerError>;
+    type Result = Result<ConsoleOutput, ControllerError>;
 
     fn handle(&mut self, msg: GetOutput, _ctx: &mut Context<Self>) -> Self::Result {
         if let Some(instance) = self.services.get(&msg.id) {
-            let tty_r = instance.tty.read().expect("Can't read tty!");
-            let msg = tty_r
-                .iter()
-                .map(|s| match s {
-                    ConsoleType::State(s) => {
-                        ConsoleType::State(String::from_utf8_lossy(&s).into_owned())
-                    }
-                    ConsoleType::Stderr(s) => {
-                        ConsoleType::Stderr(String::from_utf8_lossy(&s).into_owned())
-                    }
-                    ConsoleType::Stdout(s) => {
-                        ConsoleType::Stdout(String::from_utf8_lossy(&s).into_owned())
-                    }
-                    ConsoleType::Stdin(s) => {
-                        ConsoleType::Stdin(String::from_utf8_lossy(&s).into_owned())
-                    }
-                })
-                .collect::<Vec<_>>();
-            Ok(msg)
+            Ok(instance.console_output())
         } else {
             Err(ControllerError::InvalidInstance(msg.id))
         }
@@ -376,6 +376,34 @@ impl Handler<GetServiceState> for ServiceController {
     }
 }
 
+impl Handler<GetLogConsole> for ServiceController {
+    type Result = Result<ConsoleOutput, ControllerError>;
+    fn handle(&mut self, msg: GetLogConsole, _ctx: &mut Context<Self>) -> Self::Result {
+        // TODO: refactor, should we directly call the DB from the web API?
+        if self.services.get(&msg.id).is_some() {
+            Ok(DB
+                .get_service_console_log(msg.id, msg.log_id)?
+                .ok_or(ControllerError::InvalidLog(msg.log_id))?)
+        } else {
+            Err(ControllerError::InvalidInstance(msg.id))
+        }
+    }
+}
+
+impl Handler<GetLogDetails> for ServiceController {
+    type Result = Result<LogEntryResolved, ControllerError>;
+    fn handle(&mut self, msg: GetLogDetails, _ctx: &mut Context<Self>) -> Self::Result {
+        // TODO: refactor, should we directly call the DB from the web API?
+        if self.services.get(&msg.id).is_some() {
+            Ok(DB
+                .get_service_log_details(msg.id, msg.log_id)?
+                .ok_or(ControllerError::InvalidLog(msg.log_id))?)
+        } else {
+            Err(ControllerError::InvalidInstance(msg.id))
+        }
+    }
+}
+
 impl Handler<GetLogLatest> for ServiceController {
     type Result = Result<Vec<LogEntryResolved>, ControllerError>;
     fn handle(&mut self, msg: GetLogLatest, _ctx: &mut Context<Self>) -> Self::Result {
@@ -426,14 +454,6 @@ struct Instance {
     stdin: Option<tokio::sync::mpsc::Sender<String>>,
     start_time: Option<u64>,
     end_time: Option<u64>,
-}
-
-#[derive(Serialize)]
-pub enum ConsoleType<T> {
-    Stdin(T),
-    Stdout(T),
-    Stderr(T),
-    State(T),
 }
 
 #[derive(PartialEq, Serialize)]
@@ -491,6 +511,27 @@ impl Instance {
         };
         self.start_time.as_ref().map_or(0, |v| subtrahend - v)
     }
+    fn console_output(&self) -> ConsoleOutput {
+        let tty_r = self.tty.read().expect("Can't read tty!");
+        let msg = tty_r
+            .iter()
+            .map(|s| match s {
+                ConsoleType::State(s) => {
+                    ConsoleType::State(String::from_utf8_lossy(&s).into_owned())
+                }
+                ConsoleType::Stderr(s) => {
+                    ConsoleType::Stderr(String::from_utf8_lossy(&s).into_owned())
+                }
+                ConsoleType::Stdout(s) => {
+                    ConsoleType::Stdout(String::from_utf8_lossy(&s).into_owned())
+                }
+                ConsoleType::Stdin(s) => {
+                    ConsoleType::Stdin(String::from_utf8_lossy(&s).into_owned())
+                }
+            })
+            .collect::<Vec<_>>();
+        msg
+    }
     /// Run instance, outer catch function to log startup errors to tty
     fn run(&mut self, addr: Addr<ServiceController>) -> Result<(), ::std::io::Error> {
         let res = self.run_internal(addr);
@@ -503,6 +544,7 @@ impl Instance {
             ServiceController::log(
                 NewLogEntry::new(LogAction::ServiceStartFailed(format!("{}", e)), None),
                 self.model.id,
+                None,
             );
         }
         res

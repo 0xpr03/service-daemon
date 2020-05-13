@@ -34,3 +34,7 @@ body,html{
 .formBold {
   font-weight: 600;
 }
+
+.ml1 {
+  margin-left: 10px;
+}

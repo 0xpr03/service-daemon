@@ -1,6 +1,6 @@
 use super::error::*;
-use crate::db::models::{LogEntryResolved, ServicePerm};
-use crate::handler::service::{ConsoleType, State};
+use crate::db::models::{ConsoleOutput, LogEntryResolved, LogID, ServicePerm};
+use crate::handler::service::State;
 use crate::settings::Service;
 use crate::web::models::*;
 use actix::prelude::*;
@@ -182,8 +182,9 @@ pub mod unchecked {
     /// For startup
     #[derive(Message)]
     #[rtype(result = "()")]
-    pub struct SetPasswordCost {
+    pub struct SetConfig {
         pub cost: u32,
+        pub max_session_age_secs: u32,
     }
 
     /// **Unchecked!** start service
@@ -228,9 +229,25 @@ pub mod unchecked {
         pub amount: usize,
     }
 
+    /// **Unchecked!** get service log console data
+    #[derive(Message)]
+    #[rtype(result = "Result<ConsoleOutput, ControllerError>")]
+    pub struct GetLogConsole {
+        pub id: SID,
+        pub log_id: LogID,
+    }
+
+    /// **Unchecked!** get service log details
+    #[derive(Message)]
+    #[rtype(result = "Result<LogEntryResolved, ControllerError>")]
+    pub struct GetLogDetails {
+        pub id: SID,
+        pub log_id: LogID,
+    }
+
     /// **Unchecked!** get service output
     #[derive(Message)]
-    #[rtype(result = "Result<Vec<ConsoleType<String>>, ControllerError>")]
+    #[rtype(result = "Result<ConsoleOutput, ControllerError>")]
     pub struct GetOutput {
         pub id: SID,
     }

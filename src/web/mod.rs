@@ -58,6 +58,8 @@ pub fn start(config: &Web, max_age_secs: u32) -> std::io::Result<Server> {
                     .service(web::resource("/start").route(web::post().to(api::start)))
                     .service(web::resource("/kill").route(web::post().to(api::kill)))
                     .service(web::resource("/log/latest/{amount}").route(web::get().to(api::log_latest)))
+                    .service(web::resource("/log/console/{log_id}").route(web::get().to(api::log_console)))
+                    .service(web::resource("/log/details/{log_id}").route(web::get().to(api::log_details)))
                     // Permissions of current user for service
                     .service(web::resource("/permissions").route(web::get().to(api::session_service_perm)))
                 )

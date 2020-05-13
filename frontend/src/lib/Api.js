@@ -135,9 +135,19 @@ export function api_service_permissions (service) {
     return axios.get("/api/service/" + service + "/permissions");
 }
 
-/// service permissions of current session
+/// get latest logs for service
 export function api_log_latest (service,amount) {
     return axios.get("/api/service/" + service + "/log/latest/"+amount);
+}
+
+/// get log console snapshot
+export function api_log_console (service,logid) {
+    return axios.get("/api/service/" + service + "/log/console/"+logid);
+}
+
+/// get log details
+export function api_log_details (service,logid) {
+    return axios.get("/api/service/" + service + "/log/details/"+logid);
 }
 
 /// global permissions of current session
@@ -160,7 +170,7 @@ export class Permissions {
     static LOG = 32;
 
     static hasFlag (input, flag) {
-        return input & flag;
+        return (input & flag) != 0;
     };
 }
 

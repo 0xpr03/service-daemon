@@ -45,6 +45,10 @@ pub struct Database {
     pub password: String,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Service {
     pub id: SID,
@@ -63,6 +67,10 @@ pub struct Service {
     pub soft_stop: Option<String>,
     #[serde(default)]
     pub restart_always: bool,
+    #[serde(default)]
+    pub snapshot_console_on_stop: bool,
+    #[serde(default = "default_true")]
+    pub snapshot_console_on_crash: bool,
 }
 
 impl Settings {
@@ -146,6 +154,8 @@ mod tests {
                     directory: "./foo".into(),
                     soft_stop: None,
                     args: Vec::new(),
+                    snapshot_console_on_stop: true,
+                    snapshot_console_on_crash: true,
                     id: 0,
                     restart: true,
                 },
@@ -157,6 +167,8 @@ mod tests {
                     allow_relative: true,
                     command: "some cmd2".to_owned(),
                     directory: "./foobar".into(),
+                    snapshot_console_on_stop: true,
+                    snapshot_console_on_crash: true,
                     soft_stop: Some("asdf".to_owned()),
                     args: vec!["asd".to_owned(), "def".to_owned()],
                     id: 1,
