@@ -12,6 +12,7 @@ use crate::handler::user::UserService;
 use actix;
 use actix::prelude::*;
 use failure::Fallible;
+use env_logger;
 
 mod crypto;
 mod db;
@@ -19,12 +20,10 @@ mod handler;
 mod settings;
 mod web;
 
-const RUST_LOG: &str = "RUST_LOG";
-
 fn main() -> Fallible<()> {
-    if std::env::var(RUST_LOG).is_err() {
+    if std::env::var(env_logger::DEFAULT_FILTER_ENV).is_err() {
         std::env::set_var(
-            RUST_LOG,
+            env_logger::DEFAULT_FILTER_ENV,
             #[cfg(debug_assertions)]
             "service_daemon=trace,actix_web=info,actix_server=info",
             #[cfg(not(debug_assertions))]
