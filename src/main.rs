@@ -34,7 +34,8 @@ fn main() -> Fallible<()> {
     env_logger::init();
     let settings = match settings::Settings::new() {
         Err(e) => {
-            error!("Error parsing configuration: {}", e);
+            error!("Error loading configuration {}", e);
+            info!("Please check your config file. If upgrading from an earlier version be sure to check for new required fields in config/template.toml");
             return Err(e.into());
         }
         Ok(v) => v,

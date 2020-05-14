@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 #[derive(Fail, Debug)]
 pub enum SettingsError {
-    #[fail(display = "Parsing error {}", _0)]
+    #[fail(display = "config error: {}", _0)]
     ParsingError(ConfigError),
     #[fail(display = "The service id '{}' is used multiple times!", _0)]
     IDReuse(SID),
@@ -87,7 +87,7 @@ impl Settings {
         if let Some(f) = file {
             s.merge(File::with_name(f))?;
         } else {
-            s.merge(File::with_name("config/default"))?;
+            s.merge(File::with_name("config/services"))?;
             s.merge(Environment::with_prefix("sd"))?;
         }
         let mut config: Self = s.try_into()?;

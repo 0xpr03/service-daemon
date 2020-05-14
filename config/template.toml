@@ -1,3 +1,10 @@
+#################################
+#### Configuration Template #####
+#### Copy to services.toml  #####
+#### And edit it as needed  #####
+#################################
+
+
 # not yet implemented, only for remote DB
 # currently using local DB
 #[database]
