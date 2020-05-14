@@ -94,3 +94,14 @@ command = "target/debug/examples/mass_io"
 directory = "target/debug/examples"
 args = []
 restart = false
+
+[[services]]
+id = 4
+enabled = false
+name = "Disabled service"
+autostart = true
+allow_relative = true
+command = "foo/bar"
+directory = "foobar"
+args = []
+restart = false

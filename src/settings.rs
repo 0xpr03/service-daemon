@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn test_id_reuse() {
-        assert!(Settings::new_opt(Some("tests/double_id.valid.toml")).is_ok());
+        Settings::new_opt(Some("tests/double_id.valid.toml")).unwrap();
 
         match Settings::new_opt(Some("tests/double_id.toml")) {
             Err(SettingsError::IDReuse(id)) => assert_eq!(1, id),
@@ -126,8 +126,8 @@ mod tests {
     #[test]
     #[ignore]
     fn test_new() {
-        let settings = Settings::new().unwrap();
-        assert_eq!(3, settings.services.len());
+        let settings = Settings::new_opt(Some("config/template.toml")).unwrap();
+        assert_eq!(4, settings.services.len());
     }
 
     /// Only for toml generation
