@@ -52,8 +52,8 @@ And to monitor new software, unstable services etc.
 ### Setup
 
 - Build: First of all you will need to go through the [building](#building) section.
-- Configure: copy config/template.toml to config/settings.toml you can now specify your services. Please restart service-daemon to apply changes.  
-  You can also configure everything via ENV variables by appending `sd__` in front. For example `sd__web_bind_port=9000`.
+- Configure: copy config/template.toml to config/services.toml, you can now specify your services inside it. Please restart SD to apply changes.  
+  You can also configure everything via ENV variables by prepending `sd__`. For example `sd__web_bind_port=9000`.
 - First Run: After this you run the program, which will setup the root account and print the login credentials.
 - Setup 2FA: Now you login with those credentials and setup TOTP (for example andOTP, google authenticator, 1Password)
 - To run SD on system startup in systemd (*nix) you can use the provided `service-daemon.service` file, edit paths accordingly and move it to /etc/systemd/systemd. Now run `systemctl daemon-reload` to reload systemd config. Then `systemctl enable service-daemon.service` to enable auto-start and `systemctl start service-daemon.service` to run it now.
