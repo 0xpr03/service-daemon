@@ -8,11 +8,13 @@ extern crate lazy_static;
 use crate::handler::messages;
 use crate::handler::service::ServiceController;
 use crate::handler::user::UserService;
+use crate::settings::Settings;
 
 use actix;
 use actix::prelude::*;
-use failure::Fallible;
+use clap::{App, Arg, SubCommand};
 use env_logger;
+use failure::Fallible;
 
 mod crypto;
 mod db;
@@ -31,6 +33,19 @@ fn main() -> Fallible<()> {
         );
     }
     env_logger::init();
+
+    let app = App::new("Service-Daemon")
+        .version(env!("CARGO_PKG_VERSION"))
+        .author(env!("CARGO_PKG_AUTHORS"))
+        .about("Service management with remote control, permissions and logging.")
+        .arg(
+            Arg::with_name("configtest")
+                .short("t")
+                .long("test-config")
+                .help("Test configuration"),
+        )
+        .get_matches();
+
     let settings = match settings::Settings::new() {
         Err(e) => {
             error!("Error loading configuration {}", e);
@@ -41,6 +56,13 @@ fn main() -> Fallible<()> {
     };
     trace!("{:#?}", settings);
 
+    if !app.is_present("configtest") {
+        run_daemon(settings)?;
+    }
+    Ok(())
+}
+
+fn run_daemon(settings: Settings) -> Fallible<()> {
     let sys = actix_rt::System::new("sc-web");
 
     // TODO: we can't catch anything except sighub for child processes, hint was to look into daemon(1)
@@ -78,7 +100,6 @@ fn main() -> Fallible<()> {
     });
     let _ = web::start(&settings.web, max_session_age_secs);
     sys.run()?;
-
     Ok(())
 }
 
