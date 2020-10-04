@@ -69,7 +69,7 @@ $ cd service-daemon
 
 service-daemon is written in Rust, so you'll need to grab a
 [Rust installation](https://www.rust-lang.org/) in order to compile it.
-service-daemon compiles with Rust 1.41.1 stable or newer.
+service-daemon compiles with Rust 1.42 stable or newer.
 
 To build the backend in release mode:
 
