@@ -15,9 +15,9 @@ use failure::Fallible;
 use futures::stream::StreamExt;
 use metrohash::MetroHashMap;
 use serde::Serialize;
-use std::{env::current_dir, time::Duration};
 use std::ffi::OsString;
 use std::path::Path;
+use std::{env::current_dir, time::Duration};
 use strip_ansi_escapes as ansi_esc;
 use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncWriteExt;
@@ -105,7 +105,7 @@ impl Handler<StartService> for ServiceController {
                     return Err(ControllerError::ServiceRunning);
                 }
                 trace!("starting..");
-                if let Err(e) = instance.run(ctx.address(),msg.user.is_some()) {
+                if let Err(e) = instance.run(ctx.address(), msg.user.is_some()) {
                     return Err(ControllerError::StartupIOError(e));
                 }
                 Self::log(
@@ -236,9 +236,7 @@ impl Handler<ServiceStateChanged> for ServiceController {
                     snapshot = instance.model.snapshot_console_on_manual_kill;
                     LogAction::ServiceKilled
                 }
-                State::ServiceMaxRetries => {
-                    LogAction::ServiceMaxRetries(instance.backoff_counter)
-                }
+                State::ServiceMaxRetries => LogAction::ServiceMaxRetries(instance.backoff_counter),
                 State::Stopping => {
                     unreachable!("unreachable: service-stopping-state in state update!")
                 }
@@ -266,12 +264,17 @@ impl Handler<ServiceStateChanged> for ServiceController {
                     instance.model.restart && state == State::Crashed
                 };
 
-                trace!("restart: {}",restart);
+                trace!("restart: {}", restart);
                 if restart {
                     instance.backoff_counter += 1;
                     // if no max retry limit and no backoff time is set, restart instantly
-                    if instance.model.retry_max.is_none() && instance.model.retry_backoff_ms.is_none() {
-                        info!("No backoff limit/time configured, restarting \"{}\" instantly.",instance.model.name);
+                    if instance.model.retry_max.is_none()
+                        && instance.model.retry_backoff_ms.is_none()
+                    {
+                        info!(
+                            "No backoff limit/time configured, restarting \"{}\" instantly.",
+                            instance.model.name
+                        );
                         ctx.address().do_send(StartService {
                             id: instance.model.id,
                             user: None,
@@ -282,17 +285,17 @@ impl Handler<ServiceStateChanged> for ServiceController {
                         let name = instance.model.name.clone();
                         let flag = instance.backoff_kill_flag.clone();
                         let addr = ctx.address();
-                        let (fut,aborter) = future::abortable(async move {
+                        let (fut, aborter) = future::abortable(async move {
                             tokio::time::delay_for(backoff_time).await;
                             if flag.load(Ordering::Acquire) {
                                 return;
                             }
                             trace!("Restarting from backoff");
-                            if let Err(e) = addr.try_send(StartService {
-                                id,
-                                user: None,
-                            }) {
-                                warn!("Unable to send restart message from backoff for {} {}", name, e);
+                            if let Err(e) = addr.try_send(StartService { id, user: None }) {
+                                warn!(
+                                    "Unable to send restart message from backoff for {} {}",
+                                    name, e
+                                );
                             }
                         });
                         let id = instance.model.id.clone();
@@ -580,7 +583,7 @@ impl From<usize> for State {
             6 => Stopping,
             7 => Killed,
             8 => ServiceMaxRetries,
-            _ => unreachable!("Invalid service state: {}",val),
+            _ => unreachable!("Invalid service state: {}", val),
         }
     }
 }
@@ -615,7 +618,11 @@ impl Instance {
         msg
     }
     /// Run instance, outer catch function to log startup errors to tty
-    fn run(&mut self, addr: Addr<ServiceController>, user_initiated: bool) -> Result<(), ::std::io::Error> {
+    fn run(
+        &mut self,
+        addr: Addr<ServiceController>,
+        user_initiated: bool,
+    ) -> Result<(), ::std::io::Error> {
         let res = self.run_internal(addr, user_initiated);
         if let Err(e) = &res {
             let mut buffer_w = self.tty.write().expect("Can't write buffer!");
@@ -664,14 +671,18 @@ impl Instance {
     }
 
     /// real service starter
-    fn run_internal(&mut self, addr: Addr<ServiceController>, user_initiated: bool) -> Result<(), ::std::io::Error> {
-        if self.model.enabled
-            && !self
-                .running
-                .compare_and_swap(false, true, Ordering::AcqRel)
-        {
+    fn run_internal(
+        &mut self,
+        addr: Addr<ServiceController>,
+        user_initiated: bool,
+    ) -> Result<(), ::std::io::Error> {
+        if self.model.enabled && !self.running.compare_and_swap(false, true, Ordering::AcqRel) {
             self.reset_backoff(user_initiated);
-            trace!("Starting {}, through user: {}", self.model.name,user_initiated);
+            trace!(
+                "Starting {}, through user: {}",
+                self.model.name,
+                user_initiated
+            );
             {
                 let mut buffer_w = self.tty.write().expect("Can't write buffer!");
                 buffer_w.push_back(ConsoleType::State(
@@ -853,7 +864,7 @@ impl Instance {
     }
     /// Reset backoff, also resets counter if enabled
     fn reset_backoff(&mut self, backoff: bool) {
-        trace!("Resetting backoff, counter: {}",backoff);
+        trace!("Resetting backoff, counter: {}", backoff);
         self.last_backoff = None;
         self.backoff_kill_flag.store(false, Ordering::Release);
         if backoff {
@@ -861,8 +872,14 @@ impl Instance {
         }
     }
     fn can_backoff(&self) -> bool {
-        trace!("Backoff retries: {}/{:?}",self.backoff_counter,self.model.retry_max);
-        self.model.retry_max.map_or(true, |v|self.backoff_counter < v) 
+        trace!(
+            "Backoff retries: {}/{:?}",
+            self.backoff_counter,
+            self.model.retry_max
+        );
+        self.model
+            .retry_max
+            .map_or(true, |v| self.backoff_counter < v)
     }
     fn get_backoff_time(&self) -> Duration {
         trace!("get_backoff_time");

@@ -171,7 +171,7 @@ mod tests {
                     id: 0,
                     restart: true,
                     retry_backoff_ms: Some(0),
-                    retry_max: Some(0)
+                    retry_max: Some(0),
                 },
                 Service {
                     name: "some service2".to_owned(),
@@ -190,7 +190,7 @@ mod tests {
                     id: 1,
                     restart: true,
                     retry_backoff_ms: Some(0),
-                    retry_max: Some(0)
+                    retry_max: Some(0),
                 },
             ],
         };

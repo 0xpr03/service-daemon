@@ -1,7 +1,7 @@
 use super::models::*;
 use super::Result;
 use crate::crypto;
-use bincode::{DefaultOptions, Options, deserialize, serialize};
+use bincode::{deserialize, serialize, DefaultOptions, Options};
 use std::collections::HashMap;
 
 use failure;
@@ -122,12 +122,16 @@ impl DB {
     /// Comes with some performance penalty, should therefore not be used everywhere
     #[inline]
     fn ser_key<T: ?Sized + serde::Serialize>(t: &T) -> Vec<u8> {
-        DefaultOptions::new().with_big_endian().serialize(t).unwrap()
+        DefaultOptions::new()
+            .with_big_endian()
+            .serialize(t)
+            .unwrap()
     }
     /// Deserialize a multi-key used in indexing, enforcing big endianess for sled
     #[inline]
     fn deser_key<'a, T: serde::Deserialize<'a>>(bytes: &'a [u8]) -> T {
-        DefaultOptions::new().with_big_endian()
+        DefaultOptions::new()
+            .with_big_endian()
             .deserialize::<T>(bytes)
             .unwrap()
     }
