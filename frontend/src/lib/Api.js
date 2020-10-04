@@ -14,6 +14,8 @@ export const ServiceState = {
     Crashed: "Crashed",
     Stopping: "Stopping",
     Killed: "Killed",
+    EndedBackoff: "EndedBackoff",
+    CrashedBackoff: "CrashedBackoff",
 };
 
 export const ConsoleType = {
@@ -175,6 +177,7 @@ export class Permissions {
 }
 
 export class Log {
+    static ServiceMaxRetries = "ServiceMaxRetries";
     static SystemStart = "SystemStartup";
     static KilledCmd = "ServiceCmdKilled";
     static Killed = "ServiceKilled";
@@ -213,6 +216,7 @@ export function formatLog(entry) {
         switch (Object.keys(entry.action)[0]) {
             case Log.StartFailure: return "Startup failure: "+entry.action[Log.StartFailure];
             case Log.Crash: return "Service crashed, signal "+entry.action[Log.Crash];
+            case Log.ServiceMaxRetries: return "Maximum start retries reached: "+entry.action[Log.ServiceMaxRetries];
             case Log.Input: return "Console input by "+entry.invoker.name+": "+entry.action[Log.Input];
         }
     }

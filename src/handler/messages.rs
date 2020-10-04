@@ -193,7 +193,7 @@ pub mod unchecked {
     #[rtype(result = "Result<(), ControllerError>")]
     pub struct StartService {
         pub id: SID,
-        /// Invoker to use for logging
+        /// Invoker to use for logging & differentiate between user and internal (re)start
         pub user: Option<UID>,
     }
 

@@ -76,6 +76,10 @@ pub struct Service {
     pub snapshot_console_on_manual_stop: bool,
     #[serde(default)]
     pub snapshot_console_on_manual_kill: bool,
+    #[serde(default)]
+    pub retry_max: Option<usize>,
+    #[serde(default)]
+    pub retry_backoff_ms: Option<u64>,
 }
 
 impl Settings {
@@ -166,6 +170,8 @@ mod tests {
                     snapshot_console_on_manual_kill: true,
                     id: 0,
                     restart: true,
+                    retry_backoff_ms: Some(0),
+                    retry_max: Some(0)
                 },
                 Service {
                     name: "some service2".to_owned(),
@@ -183,6 +189,8 @@ mod tests {
                     args: vec!["asd".to_owned(), "def".to_owned()],
                     id: 1,
                     restart: true,
+                    retry_backoff_ms: Some(0),
+                    retry_max: Some(0)
                 },
             ],
         };

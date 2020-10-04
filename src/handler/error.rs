@@ -129,6 +129,8 @@ pub enum ControllerError {
     DBError(db::Error),
     #[fail(display = "Service has no soft-stop parameter")]
     NoSoftStop,
+    #[fail(display = "Service has no backoff handle!")]
+    NoBackoffHandle,
 }
 
 impl From<db::Error> for ControllerError {

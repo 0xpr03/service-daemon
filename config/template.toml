@@ -61,6 +61,13 @@ snapshot_console_on_crash = true
 snapshot_console_on_manual_stop = false
 # Save last console out on user invoked service kill, default false
 snapshot_console_on_manual_kill = false
+# backoff in ms on restart
+retry_backoff_ms = 1000
+# whether to backoff exponentially, based on retry_backoff_ms
+retry_expotential_backoff = true
+# maximum restarts that happen <= backoff time
+retry_max = 10
+
 
 [[services]]
 id = 1

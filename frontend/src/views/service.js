@@ -193,7 +193,8 @@ export default class Service extends React.Component {
     render () {
         const running = this.state.state === ServiceState.Running;
         const stopping = this.state.state === ServiceState.Stopping;
-        const stopped = !running && !stopping;
+        const backoff = this.state.state === ServiceState.EndedBackoff || this.state.state === ServiceState.CrashedBackoff;
+        const stopped = !running && !stopping && !backoff;
         const perms = this.state.permissions;
         const perm_console = Permissions.hasFlag(perms, Permissions.OUTPUT) || Permissions.hasFlag(perms, Permissions.STDIN_ALL);
         const perm_log = Permissions.hasFlag(perms, Permissions.LOG);
@@ -230,6 +231,10 @@ export default class Service extends React.Component {
                             {running &&
                                 <Col><Button onClick={() => this.stopService()}
                                     disabled={!Permissions.hasFlag(perms, Permissions.STOP)} variant="danger">Stop</Button></Col>
+                            }
+                            {backoff &&
+                                <Col><Button onClick={() => this.stopService()}
+                                    disabled={!Permissions.hasFlag(perms, Permissions.STOP)} variant="danger">Abort Backoff</Button></Col>
                             }
                             {(running || stopping) &&
                                 <Col><Button onClick={() => this.killService()}
