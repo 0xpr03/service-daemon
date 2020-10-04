@@ -18,6 +18,7 @@ Process daemon allowing to start/stop/input processes via your browser, in async
 - [X] View exit codes etc
 - [x] Log of service state changes
 - [X] Stdout/err snapshots on crash/stop
+- [X] linear backoff and maximum amount of retries
 - [ ] Command-Preset
 - [X] Built-In DB (users,state,logs)
 - [ ] DBMS support (mariadb,mysql)
