@@ -1,7 +1,7 @@
 use super::models::*;
 use super::Result;
 use crate::crypto;
-use bincode::{deserialize, serialize};
+use bincode::{DefaultOptions, Options, deserialize, serialize};
 use std::collections::HashMap;
 
 use failure;
@@ -122,13 +122,12 @@ impl DB {
     /// Comes with some performance penalty, should therefore not be used everywhere
     #[inline]
     fn ser_key<T: ?Sized + serde::Serialize>(t: &T) -> Vec<u8> {
-        bincode::config().big_endian().serialize(t).unwrap()
+        DefaultOptions::new().with_big_endian().serialize(t).unwrap()
     }
     /// Deserialize a multi-key used in indexing, enforcing big endianess for sled
     #[inline]
     fn deser_key<'a, T: serde::Deserialize<'a>>(bytes: &'a [u8]) -> T {
-        bincode::config()
-            .big_endian()
+        DefaultOptions::new().with_big_endian()
             .deserialize::<T>(bytes)
             .unwrap()
     }
@@ -139,7 +138,7 @@ impl DB {
     }
     #[inline]
     fn service_perm_key_reverse(data: &[u8]) -> Result<(UID, SID)> {
-        Ok(bincode::config().big_endian().deserialize(data)?)
+        Ok(DefaultOptions::new().with_big_endian().deserialize(data)?)
     }
     /// Open tree with wrapped error
     fn open_tree(&self, tree: &'static str) -> Result<Tree> {

@@ -12,7 +12,7 @@ use crate::settings::Settings;
 
 use actix;
 use actix::prelude::*;
-use clap::{App, Arg, SubCommand};
+use clap::{App, Arg};
 use env_logger;
 use failure::Fallible;
 

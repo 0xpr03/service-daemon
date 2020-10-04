@@ -47,7 +47,7 @@ clap = "2"
 
 [dependencies.tokio]
 version = "0.2"
-features = ["sync","process","io-util","macros"]
+features = ["sync","process","io-util","macros","time"]
 
 [target.'cfg(unix)'.dependencies]
 sysexit = "0.2"
