@@ -106,21 +106,6 @@ fn run_daemon(settings: Settings) -> Fallible<()> {
 #[cfg(test)]
 mod test {
     use arraydeque::{ArrayDeque, Wrapping};
-    use circular_queue::CircularQueue;
-    #[test]
-    fn test_circular_buffer() {
-        let mut queue = CircularQueue::with_capacity(3);
-        queue.push(1);
-        queue.push(2);
-        queue.push(3);
-        queue.push(4);
-        assert_eq!(queue.len(), 3);
-        let val: Vec<_> = queue.iter().map(|s| s.clone()).collect();
-        assert_eq!(vec![4, 3, 2], val);
-        assert_eq!(queue.len(), 3);
-        queue.iter().for_each(|s| print!("{} ", s));
-        println!();
-    }
 
     #[test]
     fn test_arraydequeue() {
