@@ -616,8 +616,8 @@ mod test {
     fn test_range_service_perm() {
         let config = Config::default().temporary(true);
 
-        let mut cfg = bincode::config();
-        cfg.big_endian();
+        let cfg = DefaultOptions::new()
+        .with_big_endian();
 
         let db = config.open().unwrap();
         // take values that require > 1 byte
