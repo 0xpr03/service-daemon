@@ -269,10 +269,10 @@ pub mod unchecked {
     pub struct StartupCheck {}
 
     /// **Unchecked!** internal, load services  
-    /// For startup
+    /// For startup and reload
     #[derive(Message)]
     #[rtype(result = "()")]
-    pub struct LoadServices {
+    pub struct ReloadServices {
         pub data: Vec<Service>,
     }
 

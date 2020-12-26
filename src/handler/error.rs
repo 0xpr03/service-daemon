@@ -105,8 +105,6 @@ impl From<MailboxError> for UserError {
 
 #[derive(Fail, Debug)]
 pub enum ControllerError {
-    #[fail(display = "Failed to load services from data, services already loaded!")]
-    ServicesNotEmpty,
     #[fail(display = "Invalid log ID: {}", _0)]
     InvalidLog(crate::db::models::LogID),
     #[fail(display = "Invalid instance ID: {}", _0)]

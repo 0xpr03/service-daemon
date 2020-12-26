@@ -1,4 +1,4 @@
-use super::error::*;
+use super::{error::*, messages};
 use crate::db::models::{ConsoleOutput, ConsoleType, LogAction, LogEntryResolved, NewLogEntry};
 use crate::db::{DBInterface, DB};
 use crate::handler::user::UserService;
@@ -36,12 +36,14 @@ use std::sync::{Arc, RwLock};
 
 pub struct ServiceController {
     services: MetroHashMap<SID, LoadedService>,
+    first_load: bool,
 }
 
 impl Default for ServiceController {
     fn default() -> Self {
         Self {
             services: MetroHashMap::default(),
+            first_load: true,
         }
     }
 }
@@ -58,20 +60,55 @@ impl Supervised for ServiceController {}
 
 impl ServiceController {
     fn load_services(&mut self, data: Vec<Service>) -> Fallible<()> {
-        trace!("Loading services");
-        if !self.services.is_empty() {
-            return Err(ControllerError::ServicesNotEmpty.into());
+        trace!("Reloading services");
+        if self.first_load {
+            data.into_iter().map(|d| d.into()).for_each(|i: Instance| {
+                Self::log(
+                    NewLogEntry::new(LogAction::SystemStartup, None),
+                    i.model.id,
+                    None,
+                );
+                let _ = self.services.insert(i.model.id, i);
+            });
+            trace!("Loaded {} services", self.services.len());
+            self.first_load = false;
+            UserService::from_registry()
+                .try_send(messages::unchecked::StartupCheck {})?;
+        } else {
+            let mut new_services = false;
+            for s in data {
+                if let Some(v) = self.services.get_mut(&s.id) {
+                    if v.model != s {
+                        Self::log(
+                            NewLogEntry::new(LogAction::ConfigReload, None),
+                            v.model.id,
+                            None,
+                        );
+                        if v.running.load(Ordering::Acquire) {
+                            info!("Config change for {} {}, restart service to activate changes",s.id,s.name);
+                            v.model_new = Some(s);
+                        } else {
+                            info!("Config change for {} {}",s.id,s.name);
+                            v.model = s;
+                        }
+                    }
+                } else {
+                     new_services = true;
+                    let i: Instance = s.into();
+                    Self::log(
+                        NewLogEntry::new(LogAction::ConfigReload, None),
+                        i.model.id,
+                        None,
+                    );
+                    let _ = self.services.insert(i.model.id, i);
+                }
+            }
+            if new_services {
+                UserService::from_registry()
+                .try_send(messages::unchecked::StartupCheck {})?;
+            }
+            trace!("reload received");
         }
-        let services: Vec<Instance> = data.into_iter().map(|d| d.into()).collect();
-        services.into_iter().for_each(|i| {
-            Self::log(
-                NewLogEntry::new(LogAction::SystemStartup, None),
-                i.model.id,
-                None,
-            );
-            let _ = self.services.insert(i.model.id, i);
-        });
-        trace!("Loaded {} services", self.services.len());
         Ok(())
     }
     /// Wrapper to log to DB
@@ -483,9 +520,9 @@ impl Handler<GetLogLatest> for ServiceController {
     }
 }
 
-impl Handler<LoadServices> for ServiceController {
+impl Handler<ReloadServices> for ServiceController {
     type Result = ();
-    fn handle(&mut self, msg: LoadServices, ctx: &mut Context<Self>) {
+    fn handle(&mut self, msg: ReloadServices, ctx: &mut Context<Self>) {
         if self.load_services(msg.data).is_ok() {
             for (key, val) in self.services.iter() {
                 if val.model.autostart {
@@ -501,7 +538,7 @@ impl Handler<LoadServices> for ServiceController {
                                 if let Err(e) = v {
                                     error!("Starting instance {}: {}", key, e);
                                 }
-                            }),
+                            })
                     );
                 }
             }
@@ -513,6 +550,7 @@ type LoadedService = Instance;
 
 struct Instance {
     model: Service,
+    model_new: Option<Service>,
     running: Arc<AtomicBool>,
     tty: Arc<RwLock<ArrayDeque<[ConsoleType<Vec<u8>>; 2048], Wrapping>>>,
     state: StateFlag,
@@ -906,6 +944,7 @@ impl From<Service> for Instance {
     fn from(service: Service) -> Self {
         Self {
             model: service,
+            model_new: None,
             running: Arc::new(AtomicBool::new(false)),
             tty: Arc::new(RwLock::new(ArrayDeque::new())),
             state: StateFlag::new(State::Stopped),
@@ -918,10 +957,6 @@ impl From<Service> for Instance {
             last_backoff: None,
             backoff_kill_handle: None,
             backoff_kill_flag: Arc::new(AtomicBool::new(false)),
-            // TODO:
-            // add kill-switch for delayed future, https://docs.rs/tokio/0.2.22/tokio/time/fn.delay_for.html
-            // to allow delayed backoff future that restarts, but can also be cancelled on manual interaction
-            // need to also add some kind of additional state flag to show the user a running backoff
         }
     }
 }

@@ -200,6 +200,7 @@ impl NewLogEntry {
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum LogAction {
     SystemStartup,
+    ConfigReload,
     ServiceMaxRetries(usize),
     ServiceCmdKilled,
     ServiceKilled,

@@ -12,6 +12,8 @@ use crate::settings::Settings;
 
 use actix;
 use actix::prelude::*;
+use actix_rt::signal::unix::signal;
+use actix_rt::signal::unix::SignalKind;
 use clap::{App, Arg};
 use env_logger;
 use failure::Fallible;
@@ -66,8 +68,29 @@ fn run_daemon(settings: Settings) -> Fallible<()> {
     let sys = actix_rt::System::new("sc-web");
 
     // TODO: we can't catch anything except sighub for child processes, hint was to look into daemon(1)
-    // let sigint = Signal::new(SIGINT).flatten_stream();
-    // let sigterm = Signal::new(SIGTERM).flatten_stream();
+    
+    
+    actix::spawn(async move {
+        let kind = SignalKind::hangup();
+        let mut sighub = signal(kind).unwrap();
+        for _ in sighub.recv().await {
+            info!("Received sighub, reloading..");
+            //TODO: don't hang the executor
+            let settings = match settings::Settings::new() {
+                Err(e) => {
+                    error!("Error loading configuration {}", e);
+                    info!("Please check your config file. If upgrading from an earlier version be sure to check for new required fields in config/template.toml");
+                    continue;
+                }
+                Ok(v) => v,
+            };
+            if let Err(e) = ServiceController::from_registry()
+                .send(messages::unchecked::ReloadServices { data: settings.services })
+                .await {
+                error!("Unable to reload service, failed to send msg: {}",e);
+            }
+        }
+    });
     let services = settings.services;
 
     let bcrypt_cost = settings.security.bcrypt_cost;
@@ -76,6 +99,7 @@ fn run_daemon(settings: Settings) -> Fallible<()> {
     if disable_totp {
         warn!("TOTP auth disabled!");
     }
+
     actix::spawn(async move {
         if let Err(e) = async move {
             UserService::from_registry()
@@ -86,11 +110,8 @@ fn run_daemon(settings: Settings) -> Fallible<()> {
                 })
                 .await?;
             ServiceController::from_registry()
-                .send(messages::unchecked::LoadServices { data: services })
+                .send(messages::unchecked::ReloadServices { data: services })
                 .await?;
-            UserService::from_registry()
-                .send(messages::unchecked::StartupCheck {})
-                .await??;
             Ok::<(), failure::Error>(())
         }
         .await
