@@ -81,6 +81,8 @@ To build the frontend you first need [npm & nodejs](https://nodejs.org/en/), the
 
 ```
 $ npm install
+# if you're running on v17 nodejs https://github.com/webpack/webpack/issues/14532
+export NODE_OPTIONS=--openssl-legacy-provider
 $ npm run build
 ```
 
