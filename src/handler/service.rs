@@ -676,7 +676,7 @@ impl Instance {
         addr: Addr<ServiceController>,
         user_initiated: bool,
     ) -> Result<(), ::std::io::Error> {
-        if self.model.enabled && !self.running.compare_and_swap(false, true, Ordering::AcqRel) {
+        if self.model.enabled && !self.running.compare_exchange(false, true, Ordering::AcqRel,Ordering::Acquire).is_ok() {
             self.reset_backoff(user_initiated);
             trace!(
                 "Starting {}, through user: {}",

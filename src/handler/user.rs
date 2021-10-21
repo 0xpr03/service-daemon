@@ -135,6 +135,7 @@ impl Handler<StartupCheck> for UserService {
             let mut rng = thread_rng();
             let password: String = iter::repeat(())
                 .map(|()| rng.sample(Alphanumeric))
+                .map(char::from)
                 .take(ROOT_PASSWORD_LENGTH)
                 .collect();
             let start = std::time::Instant::now();
