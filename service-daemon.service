@@ -5,12 +5,48 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=</path/to/service-daemon>
-WorkingDirectory=</path/to/service-daemon>
+ExecStart=/sdr/daemon/service-daemon
+WorkingDirectory=/sdr/
 Nice=0
 Restart=on-success
-User=<user>
-Group=<user>
+User=sdr
+Group=sdr
+
+# sandboxing enforcements
+# you may have to be laxer depending on your services
+
+# specific stuff to tune
+ReadOnlyPaths=/
+ReadWritePaths=/sdr/db.sled /sdr/services
+InaccessiblePaths=-/lost+found /root
+NoExecPaths=/
+# in this setup we expect various stuff inside /sdr/services that actually needs exec flags
+ExecPaths=/sdr/daemon /usr/lib /usr/lib64 /sdr/services
+ProtectHome=yes
+
+SystemCallFilter=@system-service
+
+# general stuff
+PrivateTmp=yes
+ProtectSystem=full
+ProtectDevices=yes
+NoNewPrivileges=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProtectSystem=true
+RestrictSUIDSGID=true
+KeyringMode=private
+ProtectClock=true
+RestrictRealtime=true
+PrivateDevices=true
+ProtectHostname=true
+# set false if running VM stuff
+MemoryDenyWriteExecute=true
+# causes everything non root and User to be from nobody
+PrivateUsers=true
 
 [Install]
 WantedBy=multi-user.target
