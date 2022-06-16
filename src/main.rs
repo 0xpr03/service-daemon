@@ -12,7 +12,9 @@ use crate::settings::Settings;
 
 use actix;
 use actix::prelude::*;
+#[cfg(target_os = "linux")]
 use actix_rt::signal::unix::signal;
+#[cfg(target_os = "linux")]
 use actix_rt::signal::unix::SignalKind;
 use clap::{App, Arg};
 use env_logger;
@@ -69,7 +71,7 @@ fn run_daemon(settings: Settings) -> Fallible<()> {
 
     // TODO: we can't catch anything except sighub for child processes, hint was to look into daemon(1)
     
-    
+    #[cfg(target_os = "linux")]
     actix::spawn(async move {
         let kind = SignalKind::hangup();
         let mut sighub = signal(kind).unwrap();
