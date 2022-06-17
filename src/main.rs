@@ -5,6 +5,7 @@ extern crate failure;
 #[macro_use]
 extern crate lazy_static;
 
+use crate::db::DBInterface;
 use crate::handler::messages;
 use crate::handler::service::ServiceController;
 use crate::handler::user::UserService;
@@ -48,6 +49,13 @@ fn main() -> Fallible<()> {
                 .long("test-config")
                 .help("Test configuration"),
         )
+        .arg(
+            Arg::with_name("cleanup")
+                .long("cleanup")
+                .value_name("max age date 2020-01-01")
+                .takes_value(true)
+                .help("Cleanup database from outdated entries"),
+        )
         .get_matches();
 
     let settings = match settings::Settings::new() {
@@ -60,9 +68,24 @@ fn main() -> Fallible<()> {
     };
     trace!("{:#?}", settings);
 
-    if !app.is_present("configtest") {
+    if app.is_present("cleanup") {
+        if let Some(v) = app.value_of("cleanup") {
+            if let Ok(v) = chrono::NaiveDate::parse_from_str(v,"%Y-%m-%d") {
+                let dt = v.and_hms_milli(0, 0, 0, 1);
+                db::DB.cleanup(dt.timestamp_millis())?;
+            } else {
+                error!("Invalid date value {}!",v);
+            }
+        } else {
+            error!("Missing max age for cleanup!")
+        }
+        
+    }
+
+    if !app.is_present("configtest") && !app.is_present("cleanup") {
         run_daemon(settings)?;
     }
+
     Ok(())
 }
 

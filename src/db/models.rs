@@ -181,6 +181,7 @@ impl LogEntry {
 /// Log entry without unique key, which is created by DB
 #[derive(Debug)]
 pub struct NewLogEntry {
+    /// UTC milliseconds
     pub time: Date,
     pub action: LogAction,
     pub invoker: Option<UID>,

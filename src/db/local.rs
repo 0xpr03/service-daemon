@@ -567,6 +567,63 @@ impl super::DBInterface for DB {
         }
         Ok(None)
     }
+
+    fn cleanup(&self, max_age: Date) -> Result<()> {
+        
+        let log_tree = self
+            .open_tree(tree::LOG_ENTRIES)?;
+        
+        let mut keys: Vec<_> = Vec::new();
+
+        let mut items = 0;
+        let mut invalid_val = 0;
+        let mut invalid_key = 0;
+
+        {
+            for r in log_tree.iter() {
+                items += 1;
+                let (k,v) = r.expect("Can't read next entry");
+                //println!("Entry: {:?}",v);
+                let entry: LogEntry = match deserialize(&v) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        invalid_val += 1;
+                        keys.push(k);
+                        //error!("Can't deserialize value of k:{:?} {:?}!",k,e);
+                        continue;
+                    }
+                };
+                if let Ok((s,d)) = DefaultOptions::new()
+                    .with_big_endian()
+                    .deserialize::<(SID,LogID)>(&k) {
+                    keys.push(k);
+                    warn!("Found s{}d{}\tt{}", s,d,entry.time);
+                    continue;
+                } else {
+                    invalid_key += 1;
+                    //warn!("Can't parse key: {:?}",k);
+                }
+                
+                if entry.time < max_age {
+                    keys.push(k);
+                }
+            }
+        }
+
+        let console_tree = self.open_tree(tree::LOG_CONSOLE)?;
+
+        for k in keys {
+            //log_tree.remove(&k)?;
+            //console_tree.remove(&k)?;
+        }
+
+        log_tree.flush()?;
+        console_tree.flush()?;
+
+        println!("Found {} invalid val {} key {}",items,invalid_val,invalid_key);
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

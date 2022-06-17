@@ -81,7 +81,7 @@ pub trait DBInterface: Sized {
     fn service_log_limited(&self, service: SID, limit: usize) -> Result<Vec<LogEntryResolved>>;
     /// Get service log entries between two dates
     fn service_log_date(&self, service: SID, from: Date, to: Date) -> Result<Vec<LogEntry>>;
-    /// Returns min and max dates where log entries exist for s given service
+    /// Returns min and max dates where log entries exist for a given service
     ///
     /// Returns none if no entries exist
     fn service_log_minmax(&self, service: SID) -> Result<Option<(Date, Date)>>;
@@ -94,6 +94,8 @@ pub trait DBInterface: Sized {
         service: SID,
         log_id: LogID,
     ) -> Result<Option<LogEntryResolved>>;
+    /// List all services for which 
+    fn cleanup(&self, max_age: Date) -> Result<()>;
 }
 
 lazy_static! {
