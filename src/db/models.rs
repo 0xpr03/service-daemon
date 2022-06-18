@@ -201,8 +201,6 @@ impl NewLogEntry {
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum LogAction {
     SystemStartup,
-    ConfigReload,
-    ServiceMaxRetries(usize),
     ServiceCmdKilled,
     ServiceKilled,
     ServiceCmdStop,
@@ -213,6 +211,8 @@ pub enum LogAction {
     ServiceCmdStart,
     ServiceCrashed(i32),
     Stdin(String),
+    ConfigReload,
+    ServiceMaxRetries(usize),
 }
 
 pub type Date = i64;

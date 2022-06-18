@@ -1,7 +1,8 @@
 use super::models::*;
 use super::Result;
 use crate::crypto;
-use bincode::{deserialize, serialize, DefaultOptions, Options};
+use bincode::Options;
+use bincode::{deserialize, serialize};
 use std::collections::HashMap;
 
 use failure;
@@ -122,7 +123,10 @@ impl DB {
     /// Comes with some performance penalty, should therefore not be used everywhere
     #[inline]
     fn ser_key<T: ?Sized + serde::Serialize>(t: &T) -> Vec<u8> {
-        DefaultOptions::new()
+        bincode::options()
+            .with_fixint_encoding()
+            .allow_trailing_bytes()
+            .with_no_limit()
             .with_big_endian()
             .serialize(t)
             .unwrap()
@@ -130,10 +134,17 @@ impl DB {
     /// Deserialize a multi-key used in indexing, enforcing big endianess for sled
     #[inline]
     fn deser_key<'a, T: serde::Deserialize<'a>>(bytes: &'a [u8]) -> T {
-        DefaultOptions::new()
+        Self::deser_key_opt::<T>(bytes)
+            .unwrap()
+    }
+    #[inline]
+    fn deser_key_opt<'a, T: serde::Deserialize<'a>>(bytes: &'a [u8]) -> std::result::Result<T,Box<bincode::ErrorKind>> {
+        bincode::options()
+            .with_fixint_encoding()
+            .allow_trailing_bytes()
+            .with_no_limit()
             .with_big_endian()
             .deserialize::<T>(bytes)
-            .unwrap()
     }
     /// Generate serialized Service-Perm ID
     #[inline]
@@ -142,7 +153,7 @@ impl DB {
     }
     #[inline]
     fn service_perm_key_reverse(data: &[u8]) -> Result<(UID, SID)> {
-        Ok(DefaultOptions::new().with_big_endian().deserialize(data)?)
+        Ok(bincode::config().big_endian().deserialize(data)?)
     }
     /// Open tree with wrapped error
     fn open_tree(&self, tree: &'static str) -> Result<Tree> {
@@ -185,6 +196,18 @@ impl DB {
     /// Check if id is valid (taken)
     fn is_valid_uid(&self, id: UID) -> Result<bool> {
         Ok(self.open_tree(tree::USER)?.contains_key(ser!(id))?)
+    }
+
+    /// Print DB Stats
+    fn print_stats(&self) -> Result<()> {
+        for name in self.db.tree_names().into_iter() {
+            let tree = self
+            .db
+            .open_tree(&name)?;
+            let name = std::str::from_utf8(&name).unwrap();
+            println!("{} {}",name,tree.len());
+        }
+        Ok(())
     }
 }
 
@@ -579,49 +602,60 @@ impl super::DBInterface for DB {
         let mut invalid_val = 0;
         let mut invalid_key = 0;
 
+        let cfg = bincode::config();
         {
             for r in log_tree.iter() {
                 items += 1;
                 let (k,v) = r.expect("Can't read next entry");
                 //println!("Entry: {:?}",v);
-                let entry: LogEntry = match deserialize(&v) {
+                let entry: LogEntry = match cfg.deserialize(&v) {
                     Ok(v) => v,
                     Err(e) => {
                         invalid_val += 1;
-                        keys.push(k);
-                        //error!("Can't deserialize value of k:{:?} {:?}!",k,e);
+                        error!("Can't deserialize value of key:{:?} {:?}!",k,e);
                         continue;
                     }
                 };
-                if let Ok((s,d)) = DefaultOptions::new()
-                    .with_big_endian()
-                    .deserialize::<(SID,LogID)>(&k) {
-                    keys.push(k);
-                    warn!("Found s{}d{}\tt{}", s,d,entry.time);
-                    continue;
-                } else {
-                    invalid_key += 1;
-                    //warn!("Can't parse key: {:?}",k);
+                match Self::deser_key_opt::<(SID,LogID)>(&k) {
+                    Ok((_s,_d)) => (),
+                    Err(e) => {
+                        invalid_key += 1;
+                        let parsed = chrono::NaiveDateTime::from_timestamp(entry.time/1000,0).format("%Y-%m-%d %H:%M:%S");
+                        error!("Key error {} \t {} \t {:?} {:?} {:?}",entry.time,parsed,k,e,entry);
+                    }
                 }
                 
                 if entry.time < max_age {
                     keys.push(k);
+                    //let parsed = chrono::NaiveDateTime::from_timestamp(entry.time/1000,0).format("%Y-%m-%d %H:%M:%S");
+                    //debug!("Found deletable entry from {}",parsed);
                 }
             }
         }
 
         let console_tree = self.open_tree(tree::LOG_CONSOLE)?;
+        info!("Found {} deletable entries.",keys.len());
 
-        for k in keys {
-            //log_tree.remove(&k)?;
-            //console_tree.remove(&k)?;
+        let mut batch = Batch::default();
+
+        for v in keys {
+            batch.remove(v);
         }
 
-        log_tree.flush()?;
-        console_tree.flush()?;
+        info!("Applying batch removal");
+        log_tree.apply_batch(batch.clone())?;
+        console_tree.apply_batch(batch)?;
 
-        println!("Found {} invalid val {} key {}",items,invalid_val,invalid_key);
+        //info!("Flushing DB");
+        //log_tree.flush()?;
+        //console_tree.flush()?;
 
+        info!("Found {} invalid val {} invalid key {}",items,invalid_val,invalid_key);
+        self.print_stats()?;
+        info!("Finished, press any key to exit. Waiting allows the GC to take place.");
+        let mut buffer = String::new();
+        std::io::stdin().read_line(&mut buffer).unwrap();
+        
         Ok(())
     }
 }
@@ -673,8 +707,8 @@ mod test {
     fn test_range_service_perm() {
         let config = Config::default().temporary(true);
 
-        let cfg = DefaultOptions::new()
-        .with_big_endian();
+        let mut cfg = bincode::config();
+        cfg.big_endian();
 
         let db = config.open().unwrap();
         // take values that require > 1 byte
