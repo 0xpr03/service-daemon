@@ -94,7 +94,7 @@ pub trait DBInterface: Sized {
         service: SID,
         log_id: LogID,
     ) -> Result<Option<LogEntryResolved>>;
-    /// List all services for which 
+    /// List all services for which
     fn cleanup(&self, max_age: Date) -> Result<()>;
 }
 

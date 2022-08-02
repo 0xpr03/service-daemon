@@ -72,8 +72,7 @@ impl ServiceController {
             });
             trace!("Loaded {} services", self.services.len());
             self.first_load = false;
-            UserService::from_registry()
-                .try_send(messages::unchecked::StartupCheck {})?;
+            UserService::from_registry().try_send(messages::unchecked::StartupCheck {})?;
         } else {
             let mut new_services = false;
             for s in data {
@@ -85,15 +84,18 @@ impl ServiceController {
                             None,
                         );
                         if v.running.load(Ordering::Acquire) {
-                            info!("Config change for {} {}, restart service to activate changes",s.id,s.name);
+                            info!(
+                                "Config change for {} {}, restart service to activate changes",
+                                s.id, s.name
+                            );
                             v.model_new = Some(s);
                         } else {
-                            info!("Config change for {} {}",s.id,s.name);
+                            info!("Config change for {} {}", s.id, s.name);
                             v.model = s;
                         }
                     }
                 } else {
-                     new_services = true;
+                    new_services = true;
                     let i: Instance = s.into();
                     Self::log(
                         NewLogEntry::new(LogAction::ConfigReload, None),
@@ -104,8 +106,7 @@ impl ServiceController {
                 }
             }
             if new_services {
-                UserService::from_registry()
-                .try_send(messages::unchecked::StartupCheck {})?;
+                UserService::from_registry().try_send(messages::unchecked::StartupCheck {})?;
             }
             trace!("reload received");
         }
@@ -538,7 +539,7 @@ impl Handler<ReloadServices> for ServiceController {
                                 if let Err(e) = v {
                                     error!("Starting instance {}: {}", key, e);
                                 }
-                            })
+                            }),
                     );
                 }
             }
@@ -714,7 +715,12 @@ impl Instance {
         addr: Addr<ServiceController>,
         user_initiated: bool,
     ) -> Result<(), ::std::io::Error> {
-        if self.model.enabled && !self.running.compare_exchange(false, true, Ordering::AcqRel,Ordering::Acquire).is_ok() {
+        if self.model.enabled
+            && !self
+                .running
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+        {
             self.reset_backoff(user_initiated);
             trace!(
                 "Starting {}, through user: {}",

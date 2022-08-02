@@ -70,16 +70,15 @@ fn main() -> Fallible<()> {
 
     if app.is_present("cleanup") {
         if let Some(v) = app.value_of("cleanup") {
-            if let Ok(v) = chrono::NaiveDate::parse_from_str(v,"%Y-%m-%d") {
+            if let Ok(v) = chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d") {
                 let dt = v.and_hms_milli(0, 0, 0, 1);
                 db::DB.cleanup(dt.timestamp_millis())?;
             } else {
-                error!("Invalid date value {}!",v);
+                error!("Invalid date value {}!", v);
             }
         } else {
             error!("Missing max age for cleanup!")
         }
-        
     }
 
     if !app.is_present("configtest") && !app.is_present("cleanup") {
@@ -93,7 +92,7 @@ fn run_daemon(settings: Settings) -> Fallible<()> {
     let sys = actix_rt::System::new("sc-web");
 
     // TODO: we can't catch anything except sighub for child processes, hint was to look into daemon(1)
-    
+
     #[cfg(target_os = "linux")]
     actix::spawn(async move {
         let kind = SignalKind::hangup();
@@ -110,9 +109,12 @@ fn run_daemon(settings: Settings) -> Fallible<()> {
                 Ok(v) => v,
             };
             if let Err(e) = ServiceController::from_registry()
-                .send(messages::unchecked::ReloadServices { data: settings.services })
-                .await {
-                error!("Unable to reload service, failed to send msg: {}",e);
+                .send(messages::unchecked::ReloadServices {
+                    data: settings.services,
+                })
+                .await
+            {
+                error!("Unable to reload service, failed to send msg: {}", e);
             }
         }
     });

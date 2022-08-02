@@ -134,11 +134,12 @@ impl DB {
     /// Deserialize a multi-key used in indexing, enforcing big endianess for sled
     #[inline]
     fn deser_key<'a, T: serde::Deserialize<'a>>(bytes: &'a [u8]) -> T {
-        Self::deser_key_opt::<T>(bytes)
-            .unwrap()
+        Self::deser_key_opt::<T>(bytes).unwrap()
     }
     #[inline]
-    fn deser_key_opt<'a, T: serde::Deserialize<'a>>(bytes: &'a [u8]) -> std::result::Result<T,Box<bincode::ErrorKind>> {
+    fn deser_key_opt<'a, T: serde::Deserialize<'a>>(
+        bytes: &'a [u8],
+    ) -> std::result::Result<T, Box<bincode::ErrorKind>> {
         bincode::options()
             .with_fixint_encoding()
             .allow_trailing_bytes()
@@ -201,11 +202,9 @@ impl DB {
     /// Print DB Stats
     fn print_stats(&self) -> Result<()> {
         for name in self.db.tree_names().into_iter() {
-            let tree = self
-            .db
-            .open_tree(&name)?;
+            let tree = self.db.open_tree(&name)?;
             let name = std::str::from_utf8(&name).unwrap();
-            println!("{} {}",name,tree.len());
+            println!("{} {}", name, tree.len());
         }
         Ok(())
     }
@@ -592,10 +591,8 @@ impl super::DBInterface for DB {
     }
 
     fn cleanup(&self, max_age: Date) -> Result<()> {
-        
-        let log_tree = self
-            .open_tree(tree::LOG_ENTRIES)?;
-        
+        let log_tree = self.open_tree(tree::LOG_ENTRIES)?;
+
         let mut keys: Vec<_> = Vec::new();
 
         let mut items = 0;
@@ -606,25 +603,29 @@ impl super::DBInterface for DB {
         {
             for r in log_tree.iter() {
                 items += 1;
-                let (k,v) = r.expect("Can't read next entry");
+                let (k, v) = r.expect("Can't read next entry");
                 //println!("Entry: {:?}",v);
                 let entry: LogEntry = match cfg.deserialize(&v) {
                     Ok(v) => v,
                     Err(e) => {
                         invalid_val += 1;
-                        error!("Can't deserialize value of key:{:?} {:?}!",k,e);
+                        error!("Can't deserialize value of key:{:?} {:?}!", k, e);
                         continue;
                     }
                 };
-                match Self::deser_key_opt::<(SID,LogID)>(&k) {
-                    Ok((_s,_d)) => (),
+                match Self::deser_key_opt::<(SID, LogID)>(&k) {
+                    Ok((_s, _d)) => (),
                     Err(e) => {
                         invalid_key += 1;
-                        let parsed = chrono::NaiveDateTime::from_timestamp(entry.time/1000,0).format("%Y-%m-%d %H:%M:%S");
-                        error!("Key error {} \t {} \t {:?} {:?} {:?}",entry.time,parsed,k,e,entry);
+                        let parsed = chrono::NaiveDateTime::from_timestamp(entry.time / 1000, 0)
+                            .format("%Y-%m-%d %H:%M:%S");
+                        error!(
+                            "Key error {} \t {} \t {:?} {:?} {:?}",
+                            entry.time, parsed, k, e, entry
+                        );
                     }
                 }
-                
+
                 if entry.time < max_age {
                     keys.push(k);
                     //let parsed = chrono::NaiveDateTime::from_timestamp(entry.time/1000,0).format("%Y-%m-%d %H:%M:%S");
@@ -634,7 +635,7 @@ impl super::DBInterface for DB {
         }
 
         let console_tree = self.open_tree(tree::LOG_CONSOLE)?;
-        info!("Found {} deletable entries.",keys.len());
+        info!("Found {} deletable entries.", keys.len());
 
         let mut batch = Batch::default();
 
@@ -650,12 +651,15 @@ impl super::DBInterface for DB {
         //log_tree.flush()?;
         //console_tree.flush()?;
 
-        info!("Found {} invalid val {} invalid key {}",items,invalid_val,invalid_key);
+        info!(
+            "Found {} invalid val {} invalid key {}",
+            items, invalid_val, invalid_key
+        );
         self.print_stats()?;
         info!("Finished, press any key to exit. Waiting allows the GC to take place.");
         let mut buffer = String::new();
         std::io::stdin().read_line(&mut buffer).unwrap();
-        
+
         Ok(())
     }
 }
