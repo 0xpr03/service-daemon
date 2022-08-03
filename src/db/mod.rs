@@ -1,11 +1,6 @@
-#[cfg(feature = "local")]
 mod local;
 pub mod models;
 use local::{DBError, DB as InnerDB};
-#[cfg(feature = "remote")]
-mod remote;
-#[cfg(feature = "remote")]
-use remote::{DBError, DB as InnerDB};
 
 use crate::web::models::*;
 use models::*;
@@ -96,26 +91,15 @@ pub trait DBInterface: Sized {
     ) -> Result<Option<LogEntryResolved>>;
     /// List all services for which
     fn cleanup(&self, max_age: Date) -> Result<()>;
+    /// Export DB for re-import
+    fn export(&self, file: &str) -> Result<()>;
+    /// Import DB from raw dump
+    fn import(&self, file: &str) -> Result<()>;
 }
 
 lazy_static! {
     pub static ref DB: InnerDB = InnerDB::default();
 }
-
-macro_rules! assert_unique_feature {
-    () => {};
-    ($first:tt $(,$rest:tt)*) => {
-        $(
-            #[cfg(all(feature = $first, feature = $rest))]
-            compile_error!(concat!("features \"", $first, "\" and \"", $rest, "\" cannot be used together"));
-        )*
-        assert_unique_feature!($($rest),*);
-    }
-}
-
-assert_unique_feature!("local", "remote");
-#[cfg(not(any(feature = "local", feature = "remote")))]
-compile_error!("Either feature \"local\" or \"remote\" must be enabled for this crate.");
 
 #[cfg(test)]
 mod test {

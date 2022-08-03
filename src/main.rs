@@ -17,6 +17,7 @@ use actix::prelude::*;
 use actix_rt::signal::unix::signal;
 #[cfg(target_os = "linux")]
 use actix_rt::signal::unix::SignalKind;
+use clap::SubCommand;
 use clap::{App, Arg};
 use env_logger;
 use failure::Fallible;
@@ -43,18 +44,43 @@ fn main() -> Fallible<()> {
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
         .about("Service management with remote control, permissions and logging.")
-        .arg(
-            Arg::with_name("configtest")
-                .short("t")
-                .long("test-config")
+        .subcommand(
+            SubCommand::with_name("configtest")
+                .alias("t")
                 .help("Test configuration"),
         )
-        .arg(
-            Arg::with_name("cleanup")
-                .long("cleanup")
-                .value_name("max age date 2020-01-01")
-                .takes_value(true)
-                .help("Cleanup database from outdated entries"),
+        .subcommand(
+            SubCommand::with_name("export")
+                .about("Export DB as raw dump")
+                .arg(
+                    Arg::with_name("file")
+                        .long("file")
+                        .value_name("export file name")
+                        .default_value("db_export.dump")
+                        .takes_value(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("import")
+                .about("Import DB from raw dump")
+                .arg(
+                    Arg::with_name("file")
+                        .long("file")
+                        .value_name("export file name")
+                        .default_value("db_export.dump")
+                        .takes_value(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("cleanup")
+                .about("Cleanup database from outdated entries")
+                .arg(
+                    Arg::with_name("since")
+                        .required(true)
+                        .value_name("max age date 2020-01-01")
+                        .help("Entries older than this date are removed.")
+                        .takes_value(true),
+                ),
         )
         .get_matches();
 
@@ -67,9 +93,8 @@ fn main() -> Fallible<()> {
         Ok(v) => v,
     };
     trace!("{:#?}", settings);
-
-    if app.is_present("cleanup") {
-        if let Some(v) = app.value_of("cleanup") {
+    if let Some(args) = app.subcommand_matches("cleanup") {
+        if let Some(v) = args.value_of("since") {
             if let Ok(v) = chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d") {
                 let dt = v.and_hms_milli(0, 0, 0, 1);
                 db::DB.cleanup(dt.timestamp_millis())?;
@@ -79,9 +104,21 @@ fn main() -> Fallible<()> {
         } else {
             error!("Missing max age for cleanup!")
         }
-    }
-
-    if !app.is_present("configtest") && !app.is_present("cleanup") {
+    } else if let Some(args) = app.subcommand_matches("export") {
+        let file = args.value_of("file").unwrap();
+        if let Err(e) = db::DB.export(&file) {
+            error!("Failed to export DB: {}", e);
+        } else {
+            info!("Export DB to {}", file);
+        }
+    } else if let Some(args) = app.subcommand_matches("import") {
+        let file = args.value_of("file").unwrap();
+        if let Err(e) = db::DB.import(&file) {
+            error!("Failed to import DB: {}", e);
+        } else {
+            info!("Import DB from {}", file);
+        }
+    } else if app.subcommand_matches("configtest").is_none() {
         run_daemon(settings)?;
     }
 

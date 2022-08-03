@@ -21,7 +21,6 @@ Process daemon allowing to start/stop/input processes via your browser, in async
 - [X] linear backoff and maximum amount of retries
 - [ ] Command-Preset
 - [X] Built-In DB (users,state,logs)
-- [ ] DBMS support (mariadb,mysql)
 
 ### Navigation
 
@@ -58,6 +57,7 @@ And to monitor new software, unstable services etc.
 - First Run: After this you run the program, which will setup the root account and print the login credentials. `cargo run --release` or run the executable in target/release/service-daemon
 - Setup 2FA: Now you login with those credentials and setup TOTP (for example andOTP, google authenticator, 1Password)
 - To run SD on system startup in systemd (*nix) you can use the provided `service-daemon.service` file, edit paths accordingly and move it to /etc/systemd/systemd. Now run `systemctl daemon-reload` to reload systemd config. Then `systemctl enable service-daemon.service` to enable auto-start and `systemctl start service-daemon.service` to run it now.
+- You can verify your config with the `configtest` subcommand.
 
 ### Building
 

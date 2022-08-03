@@ -4,6 +4,7 @@ use crate::crypto;
 use bincode::Options;
 use bincode::{deserialize, serialize};
 use std::collections::HashMap;
+use std::io::Write;
 
 use failure;
 use sled::*;
@@ -21,6 +22,8 @@ pub enum DBError {
     SledTransactionError(Box<sled::TransactionError<()>>),
     #[fail(display = "Interal failure with invalid Data: {}", _0)]
     BincodeError(#[cause] Box<bincode::ErrorKind>),
+    #[fail(display = "Failed to perform IO: {}", _0)]
+    IO(#[cause] std::io::Error),
 }
 
 impl From<Box<bincode::ErrorKind>> for DBError {
@@ -32,6 +35,12 @@ impl From<Box<bincode::ErrorKind>> for DBError {
 impl From<sled::TransactionError<()>> for DBError {
     fn from(error: sled::TransactionError<()>) -> Self {
         DBError::SledTransactionError(Box::new(error))
+    }
+}
+
+impl From<std::io::Error> for DBError {
+    fn from(error: std::io::Error) -> Self {
+        DBError::IO(error)
     }
 }
 
@@ -55,6 +64,12 @@ impl From<sled::Error> for super::Error {
 }
 impl From<Box<bincode::ErrorKind>> for super::Error {
     fn from(error: Box<bincode::ErrorKind>) -> Self {
+        super::Error::InternalError(error.into())
+    }
+}
+
+impl From<std::io::Error> for super::Error {
+    fn from(error: std::io::Error) -> Self {
         super::Error::InternalError(error.into())
     }
 }
@@ -90,6 +105,16 @@ mod tree {
     /// service log console snapshots (LogEntry additional data)
     /// (SID,Db::generate_id)->ConsoleOutput
     pub const LOG_CONSOLE: &str = "LOG_CONSOLE";
+    pub const ALL: &[&str] = &[
+        USER,
+        REL_MAIL_UID,
+        META,
+        PERMISSION_SERVICE,
+        LOGINS,
+        REL_LOGIN_SEEN,
+        LOG_ENTRIES,
+        LOG_CONSOLE,
+    ];
 }
 
 mod meta {
@@ -662,7 +687,48 @@ impl super::DBInterface for DB {
 
         Ok(())
     }
+
+    fn export(&self, file: &str) -> Result<()> {
+        let mut file = std::fs::File::create(file)?;
+        let mut dmp: DBDump = DBDump::new();
+        for (a, b, c) in self.db.export() {
+            dmp.push((a, b, c.collect()));
+        }
+        info!("Found {} entries", dmp.len());
+        bincode::options()
+            .with_fixint_encoding()
+            .with_no_limit()
+            .with_big_endian()
+            .serialize_into(&mut file, &dmp)?;
+        file.flush()?;
+        Ok(())
+    }
+
+    fn import(&self, file: &str) -> Result<()> {
+        // create all required trees
+        for v in tree::ALL {
+            let _ = self.open_tree(v)?;
+        }
+
+        let file = std::fs::File::open(file)?;
+        let dmp: DBDump = bincode::options()
+            .with_fixint_encoding()
+            .with_no_limit()
+            .with_big_endian()
+            .deserialize_from(file)?;
+        info!("Found {} entries", dmp.len());
+        let dmp: Vec<_> = dmp
+            .into_iter()
+            .map(|(a, b, c)| (a, b, c.into_iter()))
+            .collect();
+
+        self.db.import(dmp);
+        self.db.flush()?;
+        Ok(())
+    }
 }
+
+type DBDump = Vec<(Vec<u8>, Vec<u8>, Vec<Vec<Vec<u8>>>)>;
 
 #[cfg(test)]
 mod test {

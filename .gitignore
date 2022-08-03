@@ -3,3 +3,4 @@
 /db.sled/
 /.vscode/
 /static/
+/db_export.dump
