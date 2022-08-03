@@ -1,8 +1,8 @@
 [package]
 name = "service-daemon"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Aron Heinecke <aron.heinecke@t-online.de>"]
-edition = "2018"
+edition = "2021"
 description = "Daemon to remotely control services"
 license = "MPL-2.0"
 

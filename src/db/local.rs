@@ -179,7 +179,12 @@ impl DB {
     }
     #[inline]
     fn service_perm_key_reverse(data: &[u8]) -> Result<(UID, SID)> {
-        Ok(bincode::config().big_endian().deserialize(data)?)
+        Ok(bincode::options()
+            .with_fixint_encoding()
+            .allow_trailing_bytes()
+            .with_no_limit()
+            .with_big_endian()
+            .deserialize(data)?)
     }
     /// Open tree with wrapped error
     fn open_tree(&self, tree: &'static str) -> Result<Tree> {
@@ -624,7 +629,11 @@ impl super::DBInterface for DB {
         let mut invalid_val = 0;
         let mut invalid_key = 0;
 
-        let cfg = bincode::config();
+        let cfg = bincode::options()
+            .with_fixint_encoding()
+            .allow_trailing_bytes()
+            .with_no_limit()
+            .with_big_endian();
         {
             for r in log_tree.iter() {
                 items += 1;
@@ -777,41 +786,45 @@ mod test {
     fn test_range_service_perm() {
         let config = Config::default().temporary(true);
 
-        let mut cfg = bincode::config();
-        cfg.big_endian();
+        let bincode = bincode::options()
+            .with_fixint_encoding()
+            .allow_trailing_bytes()
+            .with_no_limit()
+            .with_big_endian();
 
         let db = config.open().unwrap();
         // take values that require > 1 byte
         db.insert(
-            cfg.serialize(&(1, 2)).unwrap(),
-            cfg.serialize(&format!("{}-{}", 1, 2)).unwrap(),
+            bincode.serialize(&(1, 2)).unwrap(),
+            bincode.serialize(&format!("{}-{}", 1, 2)).unwrap(),
         )
         .unwrap();
         db.insert(
-            cfg.serialize(&(2, 1)).unwrap(),
-            cfg.serialize(&format!("{}-{}", 2, 1)).unwrap(),
+            bincode.serialize(&(2, 1)).unwrap(),
+            bincode.serialize(&format!("{}-{}", 2, 1)).unwrap(),
         )
         .unwrap();
         db.insert(
-            cfg.serialize(&(512, 420)).unwrap(),
-            cfg.serialize(&format!("{}-{}", 512, 420)).unwrap(),
+            bincode.serialize(&(512, 420)).unwrap(),
+            bincode.serialize(&format!("{}-{}", 512, 420)).unwrap(),
         )
         .unwrap();
         db.insert(
-            cfg.serialize(&(420, 512)).unwrap(),
-            cfg.serialize(&format!("{}-{}", 420, 512)).unwrap(),
+            bincode.serialize(&(420, 512)).unwrap(),
+            bincode.serialize(&format!("{}-{}", 420, 512)).unwrap(),
         )
         .unwrap();
 
-        let iter = db.range(cfg.serialize(&(1, 1)).unwrap()..cfg.serialize(&(513, 513)).unwrap());
+        let iter =
+            db.range(bincode.serialize(&(1, 1)).unwrap()..bincode.serialize(&(513, 513)).unwrap());
         let mut i = 0;
         for elem in iter {
             let (key, val) = elem.unwrap();
-            let (a, b) = cfg.deserialize::<Pair>(&key).unwrap();
+            let (a, b) = bincode.deserialize::<Pair>(&key).unwrap();
             println!("{} {}", a, b);
             assert_eq!(
                 format!("{}-{}", a, b),
-                cfg.deserialize::<String>(&val).unwrap()
+                bincode.deserialize::<String>(&val).unwrap()
             );
             i += 1;
         }
@@ -819,31 +832,32 @@ mod test {
 
         // now test a sub-range
         db.insert(
-            cfg.serialize(&(420, 510)).unwrap(),
-            cfg.serialize(&format!("{}-{}", 420, 510)).unwrap(),
+            bincode.serialize(&(420, 510)).unwrap(),
+            bincode.serialize(&format!("{}-{}", 420, 510)).unwrap(),
         )
         .unwrap();
         db.insert(
-            cfg.serialize(&(420, 509)).unwrap(),
-            cfg.serialize(&format!("{}-{}", 420, 509)).unwrap(),
+            bincode.serialize(&(420, 509)).unwrap(),
+            bincode.serialize(&format!("{}-{}", 420, 509)).unwrap(),
         )
         .unwrap();
         db.insert(
-            cfg.serialize(&(420, 508)).unwrap(),
-            cfg.serialize(&format!("{}-{}", 420, 508)).unwrap(),
+            bincode.serialize(&(420, 508)).unwrap(),
+            bincode.serialize(&format!("{}-{}", 420, 508)).unwrap(),
         )
         .unwrap();
 
-        let iter =
-            db.range(cfg.serialize(&(420, 508)).unwrap()..cfg.serialize(&(420, 510)).unwrap());
+        let iter = db.range(
+            bincode.serialize(&(420, 508)).unwrap()..bincode.serialize(&(420, 510)).unwrap(),
+        );
         let mut i = 0;
         for elem in iter {
             let (key, val) = elem.unwrap();
-            let (a, b) = cfg.deserialize::<Pair>(&key).unwrap();
+            let (a, b) = bincode.deserialize::<Pair>(&key).unwrap();
             println!("{} {}", a, b);
             assert_eq!(
                 format!("{}-{}", a, b),
-                cfg.deserialize::<String>(&val).unwrap()
+                bincode.deserialize::<String>(&val).unwrap()
             );
             i += 1;
         }
