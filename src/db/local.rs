@@ -4,6 +4,8 @@ use crate::crypto;
 use bincode::Options;
 use bincode::{deserialize, serialize};
 use std::collections::HashMap;
+use std::io::BufReader;
+use std::io::BufWriter;
 use std::io::Write;
 
 use failure;
@@ -234,7 +236,7 @@ impl DB {
         for name in self.db.tree_names().into_iter() {
             let tree = self.db.open_tree(&name)?;
             let name = std::str::from_utf8(&name).unwrap();
-            println!("{} {}", name, tree.len());
+            println!("{:>24} \t {} entries", name, tree.len());
         }
         Ok(())
     }
@@ -630,10 +632,9 @@ impl super::DBInterface for DB {
         let mut invalid_key = 0;
 
         let cfg = bincode::options()
+            .with_little_endian()
             .with_fixint_encoding()
-            .allow_trailing_bytes()
-            .with_no_limit()
-            .with_big_endian();
+            .with_no_limit();
         {
             for r in log_tree.iter() {
                 items += 1;
@@ -690,6 +691,7 @@ impl super::DBInterface for DB {
             items, invalid_val, invalid_key
         );
         self.print_stats()?;
+        self.db.flush()?;
         info!("Finished, press any key to exit. Waiting allows the GC to take place.");
         let mut buffer = String::new();
         std::io::stdin().read_line(&mut buffer).unwrap();
@@ -698,17 +700,20 @@ impl super::DBInterface for DB {
     }
 
     fn export(&self, file: &str) -> Result<()> {
-        let mut file = std::fs::File::create(file)?;
+        let mut file = BufWriter::new(std::fs::File::create(file)?);
+        info!("Fetching DB");
         let mut dmp: DBDump = DBDump::new();
+        info!("Transforming output");
         for (a, b, c) in self.db.export() {
             dmp.push((a, b, c.collect()));
         }
-        info!("Found {} entries", dmp.len());
+        info!("Found {} entries, exporting..", dmp.len());
         bincode::options()
             .with_fixint_encoding()
             .with_no_limit()
             .with_big_endian()
             .serialize_into(&mut file, &dmp)?;
+        info!("Flushing file");
         file.flush()?;
         Ok(())
     }
@@ -719,19 +724,21 @@ impl super::DBInterface for DB {
             let _ = self.open_tree(v)?;
         }
 
-        let file = std::fs::File::open(file)?;
+        info!("loading file {}",file);
+        let file = BufReader::new(std::fs::File::open(file)?);
         let dmp: DBDump = bincode::options()
             .with_fixint_encoding()
             .with_no_limit()
             .with_big_endian()
             .deserialize_from(file)?;
-        info!("Found {} entries", dmp.len());
+        info!("Found {} entries, transforming", dmp.len());
         let dmp: Vec<_> = dmp
             .into_iter()
             .map(|(a, b, c)| (a, b, c.into_iter()))
             .collect();
-
+        info!("Importing..");
         self.db.import(dmp);
+        info!("Flushing DB");
         self.db.flush()?;
         Ok(())
     }

@@ -62,7 +62,7 @@ fn main() -> Fallible<()> {
         )
         .subcommand(
             SubCommand::with_name("import")
-                .about("Import DB from raw dump")
+                .about("Import DB from raw dump, crashes on duplicate entries")
                 .arg(
                     Arg::with_name("file")
                         .long("file")
@@ -109,14 +109,14 @@ fn main() -> Fallible<()> {
         if let Err(e) = db::DB.export(&file) {
             error!("Failed to export DB: {}", e);
         } else {
-            info!("Export DB to {}", file);
+            info!("Exported DB to {}", file);
         }
     } else if let Some(args) = app.subcommand_matches("import") {
         let file = args.value_of("file").unwrap();
         if let Err(e) = db::DB.import(&file) {
             error!("Failed to import DB: {}", e);
         } else {
-            info!("Import DB from {}", file);
+            info!("Imported DB from {}", file);
         }
     } else if app.subcommand_matches("configtest").is_none() {
         run_daemon(settings)?;
