@@ -1,33 +1,38 @@
 pub mod api;
 
 pub mod models;
-pub mod websocket;
+
+use std::time::Duration;
 
 use crate::settings::Web;
 use actix_files as fs;
 use actix_identity::*;
-use actix_web::cookie::SameSite;
+use actix_session::storage::CookieSessionStore;
+use actix_session::SessionMiddleware;
+use actix_web::cookie::{Key, SameSite};
 use actix_web::dev::Server;
 use actix_web::middleware::Logger;
-use actix_web::{guard, web, App, HttpResponse, HttpServer};
+use actix_web::{web, App, HttpServer};
 
-pub fn start(config: &Web, max_age_secs: u32) -> std::io::Result<Server> {
+pub fn start(config: &Web, session_key: Key, max_age_secs: u32) -> std::io::Result<Server> {
     //TODO: add CORS
+
+    // fix 'static lifetime of HttpServer::new
+    let cookie_secure = config.cookie_secure;
+
     Ok(HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
-            .wrap(IdentityService::new(
-                CookieIdentityPolicy::new(&[0; 32])
-                    .name("sc-auth")
-                    .same_site(SameSite::Strict)
-                    // #[cfg(not(debug_assertions))]
-                    // .domain(domain.as_str())
-                    .max_age(i64::from(max_age_secs)) // 1 day
-                    // .http_only(true) already set by CookieIdentityPolicy
-                    .secure(false),
-            ))
+            .wrap(IdentityMiddleware::builder().login_deadline(Some(Duration::from_secs(max_age_secs as _))).build())
+            .wrap(SessionMiddleware::builder(
+                // TODO: use internal storage for session<->user mapping (session store) to enable forced session removal
+                    CookieSessionStore::default(),
+                    session_key.clone())
+                .cookie_secure(cookie_secure)
+                .cookie_same_site(SameSite::Strict)
+            .build())
             .service(web::scope("/api")
-                .data(web::JsonConfig::default().limit(4096))
+                .app_data(web::JsonConfig::default().limit(4096))
                 .service(web::resource("/logout").route(web::post().to(api::logout)))
                 .service(web::resource("/login").route(web::post().to(api::login)))
                 .service(web::resource("/checklogin").route(web::get().to(api::checklogin)))
@@ -64,12 +69,12 @@ pub fn start(config: &Web, max_age_secs: u32) -> std::io::Result<Server> {
                     .service(web::resource("/permissions").route(web::get().to(api::session_service_perm)))
                 )
                 .service(web::resource("/services").route(web::get().to(api::services)))
-                .default_service(web::resource("")
+                /*.default_service(web::resource("")
                     .route(web::get().to(||HttpResponse::NotFound()))
                     .route(web::route()
                             .guard(guard::Not(guard::Get()))
                             .to(||HttpResponse::MethodNotAllowed()),
-                ))
+                ))*/
             )
             .service(fs::Files::new("/", "./static").index_file("index.html"))
             .default_service(web::get().to(api::fallback))

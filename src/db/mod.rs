@@ -1,20 +1,23 @@
 mod local;
 pub mod models;
-use local::{DBError, DB as InnerDB};
-
 use crate::web::models::*;
+use local::{DBError, DB as InnerDB};
 use models::*;
+use once_cell::sync::Lazy;
+use serde::{de::DeserializeOwned, Serialize};
 use std::collections::HashMap;
 
 pub type Result<T> = ::std::result::Result<T, Error>;
 
-#[derive(Fail, Debug)]
+pub static DB: Lazy<InnerDB> = Lazy::new(|| InnerDB::default());
+
+#[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[fail(display = "Internal DB error {}", _0)]
+    #[error("Internal DB error {0}")]
     InternalError(DBError),
-    #[fail(display = "The specified user id {} is invalid!", _0)]
+    #[error("The specified user id {0} is invalid!")]
     InvalidUser(UID),
-    #[fail(display = "User mail exists already!")]
+    #[error("User mail exists already!")]
     EMailExists,
 }
 
@@ -95,10 +98,10 @@ pub trait DBInterface: Sized {
     fn export(&self, file: &str) -> Result<()>;
     /// Import DB from raw dump
     fn import(&self, file: &str) -> Result<()>;
-}
-
-lazy_static! {
-    pub static ref DB: InnerDB = InnerDB::default();
+    /// Load value for settings key
+    fn load_settings_value<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>>;
+    /// Store value for settings key
+    fn store_settings_value<T: Serialize>(&self, key: &str, value: &T) -> Result<()>;
 }
 
 #[cfg(test)]

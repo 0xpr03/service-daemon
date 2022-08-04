@@ -3,61 +3,46 @@ use super::Result;
 use crate::crypto;
 use bincode::Options;
 use bincode::{deserialize, serialize};
+use log::*;
+use once_cell::sync::Lazy;
+use serde::de::DeserializeOwned;
+use sled::transaction::TransactionError;
 use std::collections::HashMap;
 use std::io::BufReader;
 use std::io::BufWriter;
 use std::io::Write;
 
-use failure;
 use sled::*;
 
-#[derive(Fail, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum DBError {
-    #[fail(display = "Failed to open tree {}: {}", _1, _0)]
-    TreeOpenFailed(#[cause] sled::Error, &'static str),
-    #[fail(display = "Failed after retrying {} times", _0)]
+    #[error("Failed to open tree {1}: {0}")]
+    TreeOpenFailed(sled::Error, &'static str),
+    #[error("Failed after retrying {0} times")]
     TooManyRetries(usize),
-    #[fail(display = "Internal failure with DB err: {}", _0)]
-    SledError(#[cause] failure::Error),
-    // can't mark a #[cause] due to missing Fail impl on () for <()>
-    #[fail(display = "Error with transaction: {:?}", _0)]
-    SledTransactionError(Box<sled::TransactionError<()>>),
-    #[fail(display = "Interal failure with invalid Data: {}", _0)]
-    BincodeError(#[cause] Box<bincode::ErrorKind>),
-    #[fail(display = "Failed to perform IO: {}", _0)]
-    IO(#[cause] std::io::Error),
+    #[error("Internal failure with DB err: {0}")]
+    SledError(#[from] sled::Error),
+    #[error("Internal failure with transaction: {0}")]
+    SledTransactionError(String),
+    #[error("Interal failure with invalid Data: {0}")]
+    BincodeError(#[from] Box<bincode::ErrorKind>),
+    #[error("Failed to perform IO: {}", _0)]
+    IO(#[from] std::io::Error),
 }
 
-impl From<Box<bincode::ErrorKind>> for DBError {
-    fn from(error: Box<bincode::ErrorKind>) -> Self {
-        DBError::BincodeError(error)
-    }
-}
-
-impl From<sled::TransactionError<()>> for DBError {
-    fn from(error: sled::TransactionError<()>) -> Self {
-        DBError::SledTransactionError(Box::new(error))
-    }
-}
-
-impl From<std::io::Error> for DBError {
-    fn from(error: std::io::Error) -> Self {
-        DBError::IO(error)
+impl<T: std::fmt::Debug> From<TransactionError<T>> for DBError {
+    fn from(error: TransactionError<T>) -> Self {
+        DBError::SledTransactionError(format!("{:?}", error))
     }
 }
 
 // fix for indirection creating misleading compiler errors
-impl From<sled::TransactionError<()>> for super::Error {
-    fn from(error: sled::TransactionError<()>) -> Self {
+impl<T: std::fmt::Debug> From<TransactionError<T>> for super::Error {
+    fn from(error: TransactionError<T>) -> Self {
         super::Error::InternalError(error.into())
     }
 }
 
-impl From<sled::Error> for DBError {
-    fn from(error: sled::Error) -> Self {
-        DBError::SledError(error.into())
-    }
-}
 // fix for indirection creating misleading compiler errors
 impl From<sled::Error> for super::Error {
     fn from(error: sled::Error) -> Self {
@@ -85,9 +70,7 @@ macro_rules! ser {
 const MIN_UID: UID = 1;
 const RESERVED: UID = MIN_UID - 1;
 // const RES_V = RESERVED.to_le();
-lazy_static! {
-    static ref RES_V: Vec<u8> = ser!(RESERVED);
-}
+static RES_V: Lazy<Vec<u8>> = Lazy::new(|| ser!(RESERVED));
 
 mod tree {
     /// UID<->FullUser
@@ -107,6 +90,9 @@ mod tree {
     /// service log console snapshots (LogEntry additional data)
     /// (SID,Db::generate_id)->ConsoleOutput
     pub const LOG_CONSOLE: &str = "LOG_CONSOLE";
+    /// KV settings storage
+    pub const SETTINGS: &str = "SETTINGS";
+    /// Array of all trees
     pub const ALL: &[&str] = &[
         USER,
         REL_MAIL_UID,
@@ -116,6 +102,7 @@ mod tree {
         REL_LOGIN_SEEN,
         LOG_ENTRIES,
         LOG_CONSOLE,
+        SETTINGS,
     ];
 }
 
@@ -292,11 +279,13 @@ impl super::DBInterface for DB {
         let rel_mail_uid_tree = self.open_tree(tree::REL_MAIL_UID)?;
 
         // use transaction, avoid dangling user entries
-        (&user_tree, &rel_mail_uid_tree).transaction(|(user_tree, rel_mail_uid_tree)| {
-            user_tree.insert(ser!(id), ser!(user))?;
-            rel_mail_uid_tree.insert(ser!(user.email), ser!(id))?;
-            Ok(())
-        })?;
+        let v: std::result::Result<(), TransactionError<()>> = (&user_tree, &rel_mail_uid_tree)
+            .transaction(|(user_tree, rel_mail_uid_tree)| {
+                user_tree.insert(ser!(id), ser!(user))?;
+                rel_mail_uid_tree.insert(ser!(user.email), ser!(id))?;
+                Ok(())
+            });
+        v?;
         Ok(user)
     }
 
@@ -497,13 +486,16 @@ impl super::DBInterface for DB {
         let log_entries_tree = self.open_tree(tree::LOG_ENTRIES)?;
         if let Some(console_data) = console {
             let log_console_tree = self.open_tree(tree::LOG_CONSOLE)?;
-            (&log_entries_tree, &log_console_tree).transaction(
-                move |(log_entries_tree, log_console_tree)| {
+            let v: std::result::Result<(), TransactionError<()>> = (
+                &log_entries_tree,
+                &log_console_tree,
+            )
+                .transaction(move |(log_entries_tree, log_console_tree)| {
                     log_entries_tree.insert(Self::ser_key(&(service, key)), ser!(entry))?;
                     log_console_tree.insert(Self::ser_key(&(service, key)), ser!(console_data))?;
                     Ok(())
-                },
-            )?;
+                });
+            v?;
         } else {
             log_entries_tree.insert(Self::ser_key(&(service, key)), ser!(entry))?;
         }
@@ -724,7 +716,7 @@ impl super::DBInterface for DB {
             let _ = self.open_tree(v)?;
         }
 
-        info!("loading file {}",file);
+        info!("loading file {}", file);
         let file = BufReader::new(std::fs::File::open(file)?);
         let dmp: DBDump = bincode::options()
             .with_fixint_encoding()
@@ -740,6 +732,20 @@ impl super::DBInterface for DB {
         self.db.import(dmp);
         info!("Flushing DB");
         self.db.flush()?;
+        Ok(())
+    }
+
+    fn load_settings_value<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
+        let tree = self.open_tree(tree::META)?;
+        Ok(match tree.get(key)? {
+            Some(v) => Some(bincode::deserialize(&v)?),
+            None => None,
+        })
+    }
+
+    fn store_settings_value<T: serde::Serialize>(&self, key: &str, value: &T) -> Result<()> {
+        let tree = self.open_tree(tree::SETTINGS)?;
+        tree.insert(key, ser!(value))?;
         Ok(())
     }
 }

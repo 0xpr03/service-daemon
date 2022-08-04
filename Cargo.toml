@@ -1,6 +1,6 @@
 [package]
 name = "service-daemon"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["Aron Heinecke <aron.heinecke@t-online.de>"]
 edition = "2021"
 description = "Daemon to remotely control services"
@@ -10,37 +10,39 @@ license = "MPL-2.0"
 lto = true
 
 [dependencies]
-actix = "0.9"
-actix-web = "2"
-actix-rt = "1"
-actix-files = "0.2"
-actix-identity = "0.2"
+actix = "0.13"
+actix-web = "4"
+actix-rt = "2"
+actix-files = "0.6"
+actix-identity = "0.5"
+actix-session = { features = ["cookie-session"], version = "0.7" }
 actix-threadpool = "0.3"
 nanoid = "0.4"
-config = "0.11"
+config = "0.13"
 data-encoding = "2"
 oath = "0.10"
-bcrypt = "0.10"
-sled = "0.31"
+bcrypt = "0.13"
+sled = "0.34"
 bincode = "=1.3.3"
 strip-ansi-escapes = "0.1"
-failure = "0.1"
+anyhow = "1"
+thiserror = "1"
 serde = {features = ["derive"], version = "1" }
 log = "0.4"
 env_logger = "0.9"
 metrohash = "1"
 arraydeque = "0.4"
-futures = "0.3"
-futures-util = "0.3"
-lazy_static = "1"
+futures = "0.3.21"
+futures-util = "0.3.21"
+once_cell = "1"
 rand = "0.8"
 bitflags = "1"
 chrono = "0.4"
-clap = "2"
+clap = "3"
 
 [dependencies.tokio]
-version = "0.2"
-features = ["sync","process","io-util","macros","time"]
+version = "1.20"
+features = ["sync","process","io-util","macros","time", "rt-multi-thread"]
 
 [target.'cfg(unix)'.dependencies]
 sysexit = "0.2"

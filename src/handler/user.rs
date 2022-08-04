@@ -10,6 +10,8 @@ use actix;
 use actix::fut::*;
 use actix::prelude::*;
 use actix_threadpool::run as blocking;
+use futures::future::Either;
+use log::*;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use std::iter;
@@ -213,16 +215,16 @@ impl Handler<LoginUser> for UserService {
 
     fn handle(&mut self, msg: LoginUser, _ctx: &mut Context<Self>) -> Self::Result {
         if let Err(e) = DB.set_login(&msg.session, None) {
-            return Box::new(err(e.into()));
+            return Box::pin(err(e.into()));
         }
         let uid = match DB.get_id_by_email(&msg.email) {
             Ok(Some(v)) => v,
-            Ok(None) => return Box::new(ok(LoginState::NotLoggedIn)),
-            Err(e) => return Box::new(err(e.into())),
+            Ok(None) => return Box::pin(ok(LoginState::NotLoggedIn)),
+            Err(e) => return Box::pin(err(e.into())),
         };
         let user = match DB.get_user(uid) {
             Ok(u) => u,
-            Err(e) => return Box::new(err(e.into())),
+            Err(e) => return Box::pin(err(e.into())),
         };
 
         let fut =
@@ -266,7 +268,7 @@ impl Handler<LoginUser> for UserService {
                 Either::Right(ok(LoginState::NotLoggedIn))
             }
         });
-        Box::new(fut)
+        Box::pin(fut)
     }
 }
 

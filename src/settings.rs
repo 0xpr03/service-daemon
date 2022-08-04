@@ -4,11 +4,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-#[derive(Fail, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum SettingsError {
-    #[fail(display = "config error: {}", _0)]
+    #[error("config error: {0}")]
     ParsingError(ConfigError),
-    #[fail(display = "The service id '{}' is used multiple times!", _0)]
+    #[error("The service id '{0}' is used multiple times!")]
     IDReuse(SID),
 }
 
@@ -31,6 +31,7 @@ pub struct Web {
     pub max_session_age_secs: u32,
     pub bind_ip: String,
     pub bind_port: u16,
+    pub cookie_secure: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -87,14 +88,16 @@ impl Settings {
         Self::new_opt(None)
     }
     pub fn new_opt(file: Option<&str>) -> Result<Self, SettingsError> {
-        let mut s = Config::new();
+        let mut s = Config::builder();
         if let Some(f) = file {
-            s.merge(File::with_name(f))?;
+            s = s.add_source(File::with_name(f));
         } else {
-            s.merge(File::with_name("config/services"))?;
-            s.merge(Environment::with_prefix("sd"))?;
+            s = s
+                .add_source(File::with_name("config/services"))
+                .add_source(Environment::with_prefix("sd"));
         }
-        let mut config: Self = s.try_into()?;
+        let config = s.build()?;
+        let mut config: Self = config.try_deserialize()?;
 
         config.validate()?;
 
@@ -115,6 +118,7 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use log::trace;
     use toml;
 
     #[test]
@@ -128,7 +132,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_new() {
         let settings = Settings::new_opt(Some("config/template.toml")).unwrap();
         assert_eq!(4, settings.services.len());
@@ -152,6 +155,7 @@ mod tests {
                 max_session_age_secs: 60,
                 bind_ip: String::from("127.0.0.1"),
                 bind_port: 9000,
+                cookie_secure: true,
             },
             services: vec![
                 Service {
@@ -194,6 +198,6 @@ mod tests {
                 },
             ],
         };
-        println!("{}", toml::to_string(&settings).unwrap());
+        trace!("{}", toml::to_string(&settings).unwrap());
     }
 }

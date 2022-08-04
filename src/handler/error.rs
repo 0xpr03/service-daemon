@@ -4,54 +4,37 @@ use actix::MailboxError;
 use actix_threadpool::BlockingError;
 use actix_web::{error::ResponseError, HttpResponse};
 use bcrypt::BcryptError;
+use log::error;
 
-#[derive(Fail, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum StartupError {
-    #[fail(display = "Error when accessing controller: {}", _0)]
-    ControllerError(#[cause] ControllerError),
-    #[fail(display = "Error when accessing UserController {}", _0)]
-    UserError(#[cause] UserError),
-    #[fail(display = "Error when accessing resource: {}", _0)]
-    SendError(#[cause] MailboxError),
+    #[error("Error when accessing controller: {0}")]
+    ControllerError(#[from] ControllerError),
+    #[error("Error when accessing UserController {0}")]
+    UserError(#[from] UserError),
+    #[error("Error when accessing resource: {0}")]
+    SendError(#[from] MailboxError),
 }
 
-impl From<ControllerError> for StartupError {
-    fn from(error: ControllerError) -> Self {
-        StartupError::ControllerError(error)
-    }
-}
-
-impl From<UserError> for StartupError {
-    fn from(error: UserError) -> Self {
-        StartupError::UserError(error)
-    }
-}
-
-impl From<MailboxError> for StartupError {
-    fn from(error: MailboxError) -> Self {
-        StartupError::SendError(error)
-    }
-}
-
-#[derive(Fail, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum UserError {
-    #[fail(display = "Internal DB error: {}", _0)]
+    #[error("Internal DB error: {0}")]
     DBError(db::Error),
-    #[fail(display = "Error with password hashing! {}", _0)]
-    HashError(#[cause] BcryptError),
-    #[fail(display = "Lacking permissions!")]
+    #[error("Error with password hashing! {0}")]
+    HashError(#[from] BcryptError),
+    #[error("Lacking permissions!")]
     InvalidPermissions,
-    #[fail(display = "Special internal error: {}", _0)]
+    #[error("Special internal error: {0}")]
     InternalError(String),
-    #[fail(display = "Invalid session for operation")]
+    #[error("Invalid session for operation")]
     InvalidSession,
-    #[fail(display = "Error when accessing resource: {}", _0)]
-    SendError(#[cause] MailboxError),
-    #[fail(display = "Email already in use")]
+    #[error("Error when accessing resource: {0}")]
+    SendError(#[from] MailboxError),
+    #[error("Email already in use")]
     EmailInUse,
-    #[fail(display = "Invalid password for action!")]
+    #[error("Invalid password for action!")]
     InvalidPassword,
-    #[fail(display = "Invalid data: {}", _0)]
+    #[error("Invalid data: {0}")]
     BadRequest(&'static str),
 }
 
@@ -82,12 +65,6 @@ impl From<BlockingError<bcrypt::BcryptError>> for UserError {
     }
 }
 
-impl From<bcrypt::BcryptError> for UserError {
-    fn from(error: bcrypt::BcryptError) -> Self {
-        UserError::HashError(error)
-    }
-}
-
 impl From<db::Error> for UserError {
     fn from(error: db::Error) -> Self {
         match error {
@@ -97,56 +74,32 @@ impl From<db::Error> for UserError {
     }
 }
 
-impl From<MailboxError> for UserError {
-    fn from(error: MailboxError) -> Self {
-        UserError::SendError(error)
-    }
-}
-
-#[derive(Fail, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum ControllerError {
-    #[fail(display = "Invalid log ID: {}", _0)]
+    #[error("Invalid log ID: {0}")]
     InvalidLog(crate::db::models::LogID),
-    #[fail(display = "Invalid instance ID: {}", _0)]
+    #[error("Invalid instance ID: {0}")]
     InvalidInstance(SID),
-    #[fail(display = "Unable to start, IO error: {}", _0)]
+    #[error("Unable to start, IO error: {0}")]
     StartupIOError(::std::io::Error),
-    #[fail(display = "Service is stopped!")]
+    #[error("Service is stopped!")]
     ServiceStopped,
-    #[fail(display = "Unable to execute, missing service handles! This is a bug!")]
+    #[error("Unable to execute, missing service handles! This is a bug!")]
     NoServiceHandle,
-    #[fail(display = "Service already running!")]
+    #[error("Service already running!")]
     ServiceRunning,
-    #[fail(display = "Stdin pipe to process is broken! This is an bug!")]
+    #[error("Stdin pipe to process is broken! This is an bug!")]
     BrokenPipe,
-    #[fail(display = "Error when accessing UserController: {}", _0)]
-    UserError(#[cause] UserError),
-    #[fail(display = "Error when accessing resource: {}", _0)]
-    SendError(#[cause] MailboxError),
-    #[fail(display = "Internal DB error: {}", _0)]
-    DBError(db::Error),
-    #[fail(display = "Service has no soft-stop parameter")]
+    #[error("Error when accessing UserController: {0}")]
+    UserError(#[from] UserError),
+    #[error("Error when accessing resource: {0}")]
+    SendError(#[from] MailboxError),
+    #[error("Internal DB error: {0}")]
+    DBError(#[from] db::Error),
+    #[error("Service has no soft-stop parameter")]
     NoSoftStop,
-    #[fail(display = "Service has no backoff handle!")]
+    #[error("Service has no backoff handle!")]
     NoBackoffHandle,
-}
-
-impl From<db::Error> for ControllerError {
-    fn from(error: db::Error) -> Self {
-        ControllerError::DBError(error)
-    }
-}
-
-impl From<UserError> for ControllerError {
-    fn from(error: UserError) -> Self {
-        ControllerError::UserError(error)
-    }
-}
-
-impl From<MailboxError> for ControllerError {
-    fn from(error: MailboxError) -> Self {
-        ControllerError::SendError(error)
-    }
 }
 
 impl ResponseError for ControllerError {

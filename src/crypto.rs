@@ -1,6 +1,7 @@
 use crate::db::models::*;
 use bcrypt::{hash, verify, BcryptResult};
 use data_encoding::BASE32;
+use log::debug;
 use oath::{totp_raw_now, HashType};
 use rand::thread_rng;
 use rand::Rng;

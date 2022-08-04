@@ -1,10 +1,3 @@
-#[macro_use]
-extern crate log;
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate lazy_static;
-
 use crate::db::DBInterface;
 use crate::handler::messages;
 use crate::handler::service::ServiceController;
@@ -20,7 +13,7 @@ use actix_rt::signal::unix::SignalKind;
 use clap::SubCommand;
 use clap::{App, Arg};
 use env_logger;
-use failure::Fallible;
+use log::*;
 
 mod crypto;
 mod db;
@@ -28,7 +21,10 @@ mod handler;
 mod settings;
 mod web;
 
-fn main() -> Fallible<()> {
+const COOKIE_KEY: &'static str = "cookie_key";
+
+#[actix_web::main]
+async fn main() -> anyhow::Result<()> {
     if std::env::var(env_logger::DEFAULT_FILTER_ENV).is_err() {
         std::env::set_var(
             env_logger::DEFAULT_FILTER_ENV,
@@ -119,14 +115,14 @@ fn main() -> Fallible<()> {
             info!("Imported DB from {}", file);
         }
     } else if app.subcommand_matches("configtest").is_none() {
-        run_daemon(settings)?;
+        run_daemon(settings).await?;
     }
 
     Ok(())
 }
 
-fn run_daemon(settings: Settings) -> Fallible<()> {
-    let sys = actix_rt::System::new("sc-web");
+async fn run_daemon(settings: Settings) -> anyhow::Result<()> {
+    //let sys = actix_rt::System::new();
 
     // TODO: we can't catch anything except sighub for child processes, hint was to look into daemon(1)
 
@@ -160,6 +156,15 @@ fn run_daemon(settings: Settings) -> Fallible<()> {
     let bcrypt_cost = settings.security.bcrypt_cost;
     let max_session_age_secs = settings.web.max_session_age_secs;
     let disable_totp = settings.security.disable_totp;
+    let cookie_key = match db::DB.load_settings_value::<Vec<u8>>(COOKIE_KEY)? {
+        Some(v) => actix_web::cookie::Key::from(&v),
+        None => {
+            let key_new = actix_web::cookie::Key::generate();
+            db::DB.store_settings_value(COOKIE_KEY, &key_new.master())?;
+            key_new
+        }
+    };
+
     if disable_totp {
         warn!("TOTP auth disabled!");
     }
@@ -176,15 +181,16 @@ fn run_daemon(settings: Settings) -> Fallible<()> {
             ServiceController::from_registry()
                 .send(messages::unchecked::ReloadServices { data: services })
                 .await?;
-            Ok::<(), failure::Error>(())
+            Ok::<(), anyhow::Error>(())
         }
         .await
         {
             error!("Startup failure: {}", e);
         }
     });
-    let _ = web::start(&settings.web, max_session_age_secs);
-    sys.run()?;
+    let webserver = web::start(&settings.web, cookie_key, max_session_age_secs)?;
+    webserver.await?;
+    //sys.run()?;
     Ok(())
 }
 

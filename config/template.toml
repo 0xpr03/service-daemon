@@ -27,6 +27,9 @@ max_session_age_secs = 86400
 bind_ip = "127.0.0.1"
 # Bind port
 bind_port = 9000
+# only allow session cookie access via TLS
+# disable this only if you know what you are doing
+cookie_secure = true
 
 [[services]]
 # ID is required to bind user permissions and has to be unique

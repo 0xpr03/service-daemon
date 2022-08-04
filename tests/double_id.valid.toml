@@ -7,6 +7,7 @@ disable_totp = true
 max_session_age_secs = 86400
 bind_ip = "127.0.0.1"
 bind_port = 9000
+cookie_secure = true
 
 [[services]]
 id = 0

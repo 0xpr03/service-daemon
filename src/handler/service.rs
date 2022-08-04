@@ -7,12 +7,12 @@ use crate::messages::*;
 use crate::settings::Service;
 use crate::web::models::SID;
 
-use actix::fut::{err, ok, Either};
+use actix::fut::{err, ok};
 use actix::prelude::*;
 use actix::spawn;
 use arraydeque::{ArrayDeque, Wrapping};
-use failure::Fallible;
-use futures::stream::StreamExt;
+use futures::future::Either;
+use log::*;
 use metrohash::MetroHashMap;
 use serde::Serialize;
 use std::ffi::OsString;
@@ -59,7 +59,7 @@ impl SystemService for ServiceController {}
 impl Supervised for ServiceController {}
 
 impl ServiceController {
-    fn load_services(&mut self, data: Vec<Service>) -> Fallible<()> {
+    fn load_services(&mut self, data: Vec<Service>) -> anyhow::Result<()> {
         trace!("Reloading services");
         if self.first_load {
             data.into_iter().map(|d| d.into()).for_each(|i: Instance| {
@@ -324,7 +324,7 @@ impl Handler<ServiceStateChanged> for ServiceController {
                         let flag = instance.backoff_kill_flag.clone();
                         let addr = ctx.address();
                         let (fut, aborter) = future::abortable(async move {
-                            tokio::time::delay_for(backoff_time).await;
+                            tokio::time::sleep(backoff_time).await;
                             if flag.load(Ordering::Acquire) {
                                 return;
                             }
@@ -447,7 +447,7 @@ impl Handler<GetSessionServices> for ServiceController {
                 })
                 .collect()))
         });
-        Box::new(fut)
+        Box::pin(fut)
     }
 }
 
@@ -796,13 +796,14 @@ impl Instance {
             let stdout_fut = async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
-                while let Some(l) = lines.next().await {
-                    match l {
+                loop {
+                    match lines.next_line().await {
                         Err(e) => error!("Error handling stdout: {}", e),
-                        Ok(line) => {
+                        Ok(Some(line)) => {
                             let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
                             buffer_w.push_back(ConsoleType::Stdout(ansi_esc::strip(line).unwrap()));
                         }
+                        Ok(None) => break,
                     }
                 }
             };
@@ -813,12 +814,13 @@ impl Instance {
             let stderr_fut = async move {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
-                while let Some(l) = lines.next().await {
-                    match l {
-                        Ok(line) => {
+                loop {
+                    match lines.next_line().await {
+                        Ok(Some(line)) => {
                             let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
                             buffer_w.push_back(ConsoleType::Stderr(ansi_esc::strip(line).unwrap()));
                         }
+                        Ok(None) => break,
                         Err(e) => error!("Error handling stderr: {}", e),
                     }
                 }
@@ -829,7 +831,7 @@ impl Instance {
             let crash_code = self.crash_code.clone();
             // handle child exit-return
             let child_fut = async move {
-                let result = child.await;
+                let result = child.wait().await;
                 let mut buffer_w = buffer_c.write().expect("Can't write buffer!");
                 match result {
                     Ok(state) => {
