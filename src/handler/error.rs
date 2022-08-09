@@ -110,11 +110,12 @@ impl ResponseError for ControllerError {
             }
             ControllerError::InvalidLog(_) => HttpResponse::BadRequest().body("invalid log"),
             ControllerError::ServiceRunning => {
-                HttpResponse::Conflict().body("Instance already running!")
+                HttpResponse::MethodNotAllowed().body("Instance already running!")
             }
             ControllerError::ServiceStopped => {
-                HttpResponse::Conflict().body("Instance not running!")
+                HttpResponse::MethodNotAllowed().body("Instance not running!")
             }
+            ControllerError::NoSoftStop => HttpResponse::MethodNotAllowed().body("no soft stop available for this service"),
             ControllerError::UserError(u) => u.error_response(),
             ControllerError::BrokenPipe => HttpResponse::InternalServerError().body("Broken pipe!"),
             v => {

@@ -206,6 +206,8 @@ impl Handler<KillService> for ServiceController {
             } else if service.state.in_backoff() {
                 // handle kill during backoff, abort backoff restart
                 service.stop_backoff()
+            } else if !service.running.load(Ordering::Relaxed) {
+                Err(ControllerError::ServiceStopped)
             } else {
                 Err(ControllerError::NoServiceHandle)
             }
@@ -221,10 +223,13 @@ impl Handler<StopService> for ServiceController {
     fn handle(&mut self, msg: StopService, _ctx: &mut Context<Self>) -> Self::Result {
         if let Some(service) = self.services.get_mut(&msg.id) {
             // service in backoff, stop backoff restart, if applicable
-            if !service.running.load(Ordering::Acquire) && service.state.in_backoff() {
-                service.stop_backoff()?;
-            } else {
-                return Err(ControllerError::ServiceStopped);
+            if !service.running.load(Ordering::Acquire) {
+                if service.state.in_backoff() {
+                    service.stop_backoff()?;
+                } else {
+                    trace!("ServiceStopped in !in_backoff");
+                    return Err(ControllerError::ServiceStopped);
+                }
             }
             let stdin = match service.stdin.as_mut() {
                 Some(stdin) => stdin,
@@ -716,7 +721,7 @@ impl Instance {
         user_initiated: bool,
     ) -> Result<(), ::std::io::Error> {
         if self.model.enabled
-            && !self
+            && self
                 .running
                 .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
                 .is_ok()
